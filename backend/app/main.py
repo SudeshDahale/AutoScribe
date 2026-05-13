@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health, auth, repositories
 from app.core.config import settings
+from app.core.database import engine, Base
+
+# import all models so Base knows about them
+from app.models import user, repository, analysis_job, documentation  # noqa
 
 app = FastAPI(
     title="AutoScribe API",
@@ -25,4 +29,6 @@ app.include_router(repositories.router, prefix="/api/v1/repos", tags=["repositor
 
 @app.on_event("startup")
 async def startup():
-    print("✅ AutoScribe API starting up...")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("✅ AutoScribe API starting up — SQLite DB ready")
