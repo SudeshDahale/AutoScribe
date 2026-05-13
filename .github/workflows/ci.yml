@@ -1,0 +1,40 @@
+name: AutoScribe CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check backend/app
+
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: autoscribe
+          POSTGRES_PASSWORD: autoscribe
+          POSTGRES_DB: autoscribe
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt pytest pytest-asyncio
+      - run: pytest backend/tests -v
+        env:
+          DATABASE_URL: postgresql+asyncpg://autoscribe:autoscribe@localhost:5432/autoscribe
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret
