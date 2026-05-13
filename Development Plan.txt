@@ -1,0 +1,79 @@
+✅ What We Completed (Sprint 0 + Sprint 1)
+Sprint 0 — Setup
+
+✅ Removed Docker completely
+✅ SQLite instead of PostgreSQL (zero install)
+✅ Python venv with correct dependencies
+✅ FastAPI backend running on port 8000
+✅ React + TypeScript frontend running on port 5173
+✅ Auto DB table creation on startup
+
+Sprint 1 — GitHub Auth
+
+✅ GitHub OAuth login flow
+✅ User profile fetched from GitHub API
+✅ User saved to SQLite database
+✅ Token returned to frontend
+✅ Frontend shows avatar + username after login
+✅ Logout working
+
+
+🗺️ Complete Plan — Sprint by Sprint
+
+Sprint 2 — Repository Management
+
+Add a GitHub repo to AutoScribe (by URL or name)
+List all added repos on dashboard
+Show repo details (branch, last updated)
+Store repos in SQLite linked to logged-in user
+
+
+Sprint 3 — AST Parsing Engine
+
+Install Tree-sitter
+Parse Python/JS/TS files from a repo
+Extract functions, classes, docstrings
+Store parsed structure in DB
+Show parsed summary on frontend
+
+
+Sprint 4 — AI Documentation Generation
+
+Integrate an LLM (Groq API — free tier available)
+Send parsed code to LLM
+Generate README automatically
+Generate function-level docstrings
+Show generated docs on frontend
+
+
+Sprint 5 — Celery Background Workers
+
+Install and run Redis locally
+Wire up Celery for async jobs
+Move parsing + generation to background tasks
+Show job status (queued → running → done) on frontend
+
+
+Sprint 6 — Staleness Detection + Incremental Updates
+
+Detect when code changes but docs haven't
+Flag stale documentation
+Re-generate only changed sections
+GitHub webhook support for auto-trigger on push
+
+
+Sprint 7 — Semantic Search + RAG
+
+Install ChromaDB (local vector DB)
+Embed documentation using SentenceTransformers
+Search docs by natural language query
+RAG-powered Q&A ("What does this function do?")
+
+
+Sprint 8 — Frontend Dashboard + Analytics
+
+Full dashboard UI with TailwindCSS
+Repo list with doc health scores
+Documentation viewer
+Analytics (doc coverage %, staleness count)
+PR bot integration
