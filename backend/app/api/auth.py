@@ -72,9 +72,12 @@ async def github_callback(code: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(user)
 
-    return {
-        "access_token": access_token,
-        "username": user.username,
-        "avatar_url": user.avatar_url,
-        "user_id": user.id
-    }
+   # Replace the final return statement with this:
+    redirect_url = (
+        f"http://localhost:5173?"
+        f"access_token={access_token}"
+        f"&username={user.username}"
+        f"&avatar_url={user.avatar_url}"
+        f"&user_id={user.id}"
+    )
+    return RedirectResponse(redirect_url)
