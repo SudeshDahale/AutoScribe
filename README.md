@@ -1,6 +1,7 @@
 # AutoScribe
 
 AI-powered documentation automation for GitHub repositories.
+
 ![banner](./assets/cover.png)
 
 
