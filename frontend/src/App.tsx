@@ -1,122 +1,74 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useEffect } from "react";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+interface User {
+  username: string;
+  avatar_url: string;
+  user_id: number;
+  access_token: string;
 }
 
-export default App
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    // Check if GitHub redirected back with a token in URL
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("access_token");
+    const username = params.get("username");
+    const avatar_url = params.get("avatar_url");
+    const user_id = params.get("user_id");
+
+    if (token && username && avatar_url && user_id) {
+      const userData = { access_token: token, username, avatar_url, user_id: parseInt(user_id) };
+      setUser(userData);
+      localStorage.setItem("autoscribe_user", JSON.stringify(userData));
+      // Clean up URL
+      window.history.replaceState({}, "", "/");
+    } else {
+      // Check localStorage
+      const saved = localStorage.getItem("autoscribe_user");
+      if (saved) setUser(JSON.parse(saved));
+    }
+  }, []);
+
+  const handleLogin = () => {
+    window.location.href = "http://localhost:8000/api/v1/auth/github/login";
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("autoscribe_user");
+    setUser(null);
+  };
+
+  return (
+    <div className="app">
+      {!user ? (
+        <div className="login-box">
+          <h1>AutoScribe</h1>
+          <p>AI-powered documentation for your GitHub repos</p>
+          <button onClick={handleLogin} className="github-btn">
+            Login with GitHub
+          </button>
+        </div>
+      ) : (
+        <div className="dashboard">
+          <div className="navbar">
+            <h2>AutoScribe</h2>
+            <div className="user-info">
+              <img src={user.avatar_url} alt="avatar" width={32} height={32} />
+              <span>{user.username}</span>
+              <button onClick={handleLogout}>Logout</button>
+            </div>
+          </div>
+          <div className="content">
+            <h3>Welcome, {user.username}! 👋</h3>
+            <p>Your account is connected. Repository management coming next.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
