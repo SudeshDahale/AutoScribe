@@ -3,9 +3,9 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
-    REDIS_URL: str
-    SECRET_KEY: str = "dev-secret"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./autoscribe.db"
+    REDIS_URL: str = "redis://localhost:6379/0"
+    SECRET_KEY: str = "local-dev-secret-change-me"
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
     GITHUB_WEBHOOK_SECRET: str = ""
