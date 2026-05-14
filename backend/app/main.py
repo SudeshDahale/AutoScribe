@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, auth, repositories, parse
+from app.api import health, auth, repositories, parse, docs_gen
 from app.core.config import settings
 from app.core.database import engine, Base
 
@@ -26,6 +26,7 @@ app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(repositories.router, prefix="/api/v1/repos", tags=["repositories"])
 app.include_router(parse.router, prefix="/api/v1/repos", tags=["parse"])
+app.include_router(docs_gen.router, prefix="/api/v1/repos", tags=["docs"])
 
 
 @app.on_event("startup")
