@@ -42,7 +42,22 @@ interface Docstring {
   docstring: string;
 }
 
-type RightPanel = "empty" | "parse" | "readme" | "docstrings";
+interface SearchResult {
+  name: string;
+  type: string;
+  file_path: string;
+  language: string;
+  line: number;
+  docstring: string;
+  score: number;
+}
+
+interface IndexStats {
+  indexed: boolean;
+  symbol_count: number;
+}
+
+type RightPanel = "empty" | "parse" | "readme" | "docstrings" | "search";
 
 function formatDate(iso: string) {
   if (!iso) return "—";
@@ -93,6 +108,25 @@ function App() {
   const [docstrings, setDocstrings] = useState<Docstring[]>([]);
   const [generatingDocstrings, setGeneratingDocstrings] = useState(false);
   const [docstringsError, setDocstringsError] = useState("");
+
+  // ── Search + RAG state ──────────────────────────────────────────────────
+  const [indexStats, setIndexStats] = useState<IndexStats | null>(null);
+  const [indexing, setIndexing] = useState(false);
+  const [indexError, setIndexError] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchError, setSearchError] = useState("");
+
+  const [ragQuestion, setRagQuestion] = useState("");
+  const [ragAsking, setRagAsking] = useState(false);
+  const [ragAnswer, setRagAnswer] = useState("");
+  const [ragSources, setRagSources] = useState<SearchResult[]>([]);
+  const [ragError, setRagError] = useState("");
+
+  const [searchMode, setSearchMode] = useState<"search" | "ask">("search");
+  // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -202,6 +236,81 @@ function App() {
     finally { setGeneratingDocstrings(false); }
   }
 
+  // ── Search + RAG handlers ────────────────────────────────────────────────
+
+  async function handleOpenSearch(repo: Repo) {
+    if (!user) return;
+    setSelectedRepo(repo);
+    setRightPanel("search");
+    setSearchResults([]);
+    setRagAnswer("");
+    setRagSources([]);
+    setIndexError("");
+    // fetch index stats
+    try {
+      const res = await fetch(`${API}/repos/${repo.id}/index/stats`, {
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+      if (res.ok) setIndexStats(await res.json());
+    } catch { /* silently ignore */ }
+  }
+
+  async function handleIndexRepo() {
+    if (!user || !selectedRepo) return;
+    setIndexing(true); setIndexError("");
+    try {
+      const res = await fetch(`${API}/repos/${selectedRepo.id}/index`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${user.access_token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setIndexError(err.detail || "Indexing failed.");
+        return;
+      }
+      const data = await res.json();
+      setIndexStats({ indexed: true, symbol_count: data.symbol_count });
+    } catch { setIndexError("Network error during indexing."); }
+    finally { setIndexing(false); }
+  }
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !selectedRepo || !searchQuery.trim()) return;
+    setSearching(true); setSearchError(""); setSearchResults([]);
+    try {
+      const res = await fetch(`${API}/repos/${selectedRepo.id}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
+        body: JSON.stringify({ query: searchQuery.trim(), n_results: 8 }),
+      });
+      if (!res.ok) { setSearchError("Search failed."); return; }
+      const data = await res.json();
+      setSearchResults(data.results);
+    } catch { setSearchError("Network error."); }
+    finally { setSearching(false); }
+  }
+
+  async function handleAsk(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !selectedRepo || !ragQuestion.trim()) return;
+    setRagAsking(true); setRagError(""); setRagAnswer(""); setRagSources([]);
+    try {
+      const res = await fetch(`${API}/repos/${selectedRepo.id}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
+        body: JSON.stringify({ question: ragQuestion.trim() }),
+      });
+      if (!res.ok) { setRagError("Failed to get answer."); return; }
+      const data = await res.json();
+      setRagAnswer(data.answer);
+      setRagSources(data.sources);
+    } catch { setRagError("Network error."); }
+    finally { setRagAsking(false); }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+
   function toggleFile(path: string) {
     setExpandedFiles((prev) => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n; });
   }
@@ -287,6 +396,9 @@ function App() {
                       disabled={generatingReadme}>
                       {generatingReadme && selectedRepo?.id === repo.id ? "Generating…" : "✨ README"}
                     </button>
+                    <button className="btn-action btn-action--search" onClick={() => handleOpenSearch(repo)}>
+                      🔍 Search
+                    </button>
                   </div>
                 </li>
               ))}
@@ -297,7 +409,6 @@ function App() {
         {/* ── Right panel ── */}
         <div className="panel-right">
 
-          {/* Tab bar — shown when a repo is selected */}
           {selectedRepo && (
             <div className="tab-bar">
               <button className={`tab ${rightPanel === "parse" ? "tab--active" : ""}`} onClick={() => setRightPanel("parse")}>⚙ Structure</button>
@@ -305,17 +416,16 @@ function App() {
               {docstringsFile && (
                 <button className={`tab ${rightPanel === "docstrings" ? "tab--active" : ""}`} onClick={() => setRightPanel("docstrings")}>💬 Docstrings</button>
               )}
+              <button className={`tab ${rightPanel === "search" ? "tab--active" : ""}`} onClick={() => setRightPanel("search")}>🔍 Search</button>
             </div>
           )}
 
-          {/* Empty state */}
           {rightPanel === "empty" && (
             <div className="empty-state centered">
               <p>Select a repo and click <strong>⚙ Parse</strong> to see its structure,<br />or <strong>✨ README</strong> to generate documentation.</p>
             </div>
           )}
 
-          {/* Parse results */}
           {rightPanel === "parse" && (
             parsing ? (
               <div className="empty-state centered"><div className="spinner" /><p className="muted">Parsing {selectedRepo?.full_name}…</p></div>
@@ -362,7 +472,6 @@ function App() {
             )
           )}
 
-          {/* README panel */}
           {rightPanel === "readme" && (
             <div className="readme-panel">
               <div className="readme-header">
@@ -387,7 +496,6 @@ function App() {
             </div>
           )}
 
-          {/* Docstrings panel */}
           {rightPanel === "docstrings" && (
             <div className="docstrings-panel">
               <div className="readme-header">
@@ -413,6 +521,156 @@ function App() {
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+          )}
+
+          {/* ── Search + RAG Panel ── */}
+          {rightPanel === "search" && (
+            <div className="search-panel">
+              <div className="search-panel-header">
+                <h3>🔍 Semantic Search + RAG</h3>
+                <span className="muted" style={{ fontSize: 13 }}>{selectedRepo?.full_name}</span>
+              </div>
+
+              {/* Index status bar */}
+              <div className="index-bar">
+                {indexStats?.indexed ? (
+                  <span className="index-badge index-badge--ok">
+                    ✅ Indexed — {indexStats.symbol_count} symbols
+                  </span>
+                ) : (
+                  <span className="index-badge index-badge--warn">
+                    ⚠ Not indexed yet
+                  </span>
+                )}
+                <button
+                  className="btn-action btn-action--ai"
+                  onClick={handleIndexRepo}
+                  disabled={indexing}
+                  style={{ marginLeft: "auto" }}
+                >
+                  {indexing ? "Indexing…" : "⚡ Index Repo"}
+                </button>
+              </div>
+              {indexError && <p className="error-msg">{indexError}</p>}
+
+              {/* Mode toggle */}
+              <div className="search-mode-toggle">
+                <button
+                  className={`mode-btn ${searchMode === "search" ? "mode-btn--active" : ""}`}
+                  onClick={() => setSearchMode("search")}
+                >
+                  🔎 Semantic Search
+                </button>
+                <button
+                  className={`mode-btn ${searchMode === "ask" ? "mode-btn--active" : ""}`}
+                  onClick={() => setSearchMode("ask")}
+                >
+                  🤖 Ask AI (RAG)
+                </button>
+              </div>
+
+              {/* Semantic Search */}
+              {searchMode === "search" && (
+                <div className="search-section">
+                  <form onSubmit={handleSearch} className="search-form">
+                    <input
+                      className="repo-input"
+                      placeholder="e.g. function that handles authentication"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      disabled={searching}
+                    />
+                    <button type="submit" className="btn-primary" disabled={searching || !searchQuery.trim()}>
+                      {searching ? "…" : "Search"}
+                    </button>
+                  </form>
+
+                  {searchError && <p className="error-msg">{searchError}</p>}
+
+                  {searching && (
+                    <div className="empty-state centered"><div className="spinner" /><p className="muted">Searching…</p></div>
+                  )}
+
+                  {searchResults.length > 0 && (
+                    <ul className="search-results">
+                      {searchResults.map((r, i) => (
+                        <li key={i} className="search-result-item">
+                          <div className="search-result-header">
+                            <span className={`symbol-icon symbol-icon--${r.type}`}>{SYMBOL_ICON[r.type] ?? "·"}</span>
+                            <span className="symbol-name">{r.name}</span>
+                            <span className="meta-pill">{r.type}</span>
+                            <span className="score-badge">{(r.score * 100).toFixed(0)}% match</span>
+                          </div>
+                          <div className="search-result-meta">
+                            <span className="file-path-sm">{r.file_path}:{r.line}</span>
+                            <span className="lang-icon">{LANG_ICON[r.language] ?? "📄"}</span>
+                          </div>
+                          {r.docstring && (
+                            <p className="search-result-doc">{r.docstring.slice(0, 150)}{r.docstring.length > 150 ? "…" : ""}</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {!searching && searchResults.length === 0 && searchQuery && (
+                    <p className="muted" style={{ marginTop: 16 }}>No results. Make sure the repo is indexed first.</p>
+                  )}
+                </div>
+              )}
+
+              {/* RAG Q&A */}
+              {searchMode === "ask" && (
+                <div className="search-section">
+                  <form onSubmit={handleAsk} className="search-form">
+                    <input
+                      className="repo-input"
+                      placeholder="e.g. What does the parse_repo function do?"
+                      value={ragQuestion}
+                      onChange={(e) => setRagQuestion(e.target.value)}
+                      disabled={ragAsking}
+                    />
+                    <button type="submit" className="btn-primary" disabled={ragAsking || !ragQuestion.trim()}>
+                      {ragAsking ? "…" : "Ask"}
+                    </button>
+                  </form>
+
+                  {ragError && <p className="error-msg">{ragError}</p>}
+
+                  {ragAsking && (
+                    <div className="empty-state centered"><div className="spinner" /><p className="muted">Thinking…</p></div>
+                  )}
+
+                  {ragAnswer && (
+                    <div className="rag-answer-block">
+                      <div className="rag-answer-label">🤖 Answer</div>
+                      <p className="rag-answer-text">{ragAnswer}</p>
+                    </div>
+                  )}
+
+                  {ragSources.length > 0 && (
+                    <div className="rag-sources">
+                      <div className="rag-sources-label">📎 Sources used ({ragSources.length})</div>
+                      <ul className="search-results">
+                        {ragSources.map((r, i) => (
+                          <li key={i} className="search-result-item search-result-item--sm">
+                            <div className="search-result-header">
+                              <span className={`symbol-icon symbol-icon--${r.type}`}>{SYMBOL_ICON[r.type] ?? "·"}</span>
+                              <span className="symbol-name">{r.name}</span>
+                              <span className="meta-pill">{r.type}</span>
+                              <span className="score-badge">{(r.score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="search-result-meta">
+                              <span className="file-path-sm">{r.file_path}:{r.line}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
