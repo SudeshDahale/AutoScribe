@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health, auth, repositories, parse, docs_gen, staleness, webhooks
+from app.api import search  # NEW
 from app.core.config import settings
 from app.core.database import engine, Base
 
@@ -13,7 +14,7 @@ from app.models.webhook_config import WebhookConfig  # noqa
 app = FastAPI(
     title="AutoScribe API",
     description="AI-powered documentation automation platform",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -31,6 +32,7 @@ app.include_router(parse.router, prefix="/api/v1/repos", tags=["parse"])
 app.include_router(docs_gen.router, prefix="/api/v1/repos", tags=["docs"])
 app.include_router(staleness.router, prefix="/api/v1/repos", tags=["staleness"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
+app.include_router(search.router, prefix="/api/v1/repos", tags=["search"])  # NEW
 
 
 @app.on_event("startup")
