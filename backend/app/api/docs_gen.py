@@ -10,6 +10,9 @@ from app.models.user import User
 from app.models.repository import Repository
 from app.models.parsed_file import ParsedFile
 from app.models.documentation import Documentation
+from app.models.file_snapshot import FileSnapshot
+from app.core.doc_generator import _generate_doc_type
+from app.core.staleness_detector import get_staleness_report
 
 router = APIRouter()
 
@@ -134,6 +137,7 @@ async def generate_docstrings_for_file(
     await db.commit()
     return {"docstrings": json.loads(docstrings_json)}
 
+
 @router.get("/{repo_id}/analytics")
 async def get_repo_analytics(
     repo_id: int,
@@ -144,9 +148,6 @@ async def get_repo_analytics(
     Returns doc coverage %, staleness breakdown, and symbol counts
     for the Analytics dashboard panel.
     """
-    from app.models.file_snapshot import FileSnapshot
-    from app.core.staleness_detector import get_staleness_report
-
     result = await db.execute(
         select(Repository).where(Repository.id == repo_id, Repository.user_id == current_user.id)
     )
@@ -191,3 +192,146 @@ async def get_repo_analytics(
         "last_documented_at": staleness["last_documented_at"],
         "status": staleness["status"],
     }
+
+
+@router.post("/{repo_id}/generate-architecture")
+async def generate_architecture_doc(
+    repo_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate architecture documentation from parsed files."""
+    result = await db.execute(
+        select(Repository).where(Repository.id == repo_id, Repository.user_id == current_user.id)
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    result = await db.execute(select(ParsedFile).where(ParsedFile.repo_id == repo_id))
+    parsed_files = result.scalars().all()
+    if not parsed_files:
+        raise HTTPException(status_code=400, detail="Parse the repository first")
+
+    files_data = [
+        {"file_path": f.file_path, "language": f.language, "symbols": json.loads(f.symbols)}
+        for f in parsed_files
+    ]
+    content = _generate_doc_type(repo.full_name, files_data, "architecture")
+
+    existing = await db.execute(
+        select(Documentation).where(Documentation.repo_id == repo_id, Documentation.doc_type == "architecture")
+    )
+    doc = existing.scalar_one_or_none()
+    if doc:
+        doc.content = content
+    else:
+        doc = Documentation(repo_id=repo_id, doc_type="architecture", content=content)
+        db.add(doc)
+    await db.commit()
+    return {"content": content}
+
+
+@router.post("/{repo_id}/generate-api-docs")
+async def generate_api_documentation(
+    repo_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate API documentation from router/endpoint symbols."""
+    result = await db.execute(
+        select(Repository).where(Repository.id == repo_id, Repository.user_id == current_user.id)
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    result = await db.execute(select(ParsedFile).where(ParsedFile.repo_id == repo_id))
+    parsed_files = result.scalars().all()
+    if not parsed_files:
+        raise HTTPException(status_code=400, detail="Parse the repository first")
+
+    files_data = [
+        {"file_path": f.file_path, "language": f.language, "symbols": json.loads(f.symbols)}
+        for f in parsed_files
+    ]
+    content = _generate_doc_type(repo.full_name, files_data, "api_docs")
+
+    existing = await db.execute(
+        select(Documentation).where(Documentation.repo_id == repo_id, Documentation.doc_type == "api_docs")
+    )
+    doc = existing.scalar_one_or_none()
+    if doc:
+        doc.content = content
+    else:
+        doc = Documentation(repo_id=repo_id, doc_type="api_docs", content=content)
+        db.add(doc)
+    await db.commit()
+    return {"content": content}
+
+
+@router.post("/{repo_id}/generate-engineering-docs")
+async def generate_engineering_docs(
+    repo_id: int,
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate engineering documentation.
+    body.doc_subtype: 'runbook' | 'onboarding'
+    """
+    doc_subtype = body.get("doc_subtype", "runbook")
+    if doc_subtype not in ("runbook", "onboarding"):
+        raise HTTPException(status_code=422, detail="doc_subtype must be 'runbook' or 'onboarding'")
+
+    result = await db.execute(
+        select(Repository).where(Repository.id == repo_id, Repository.user_id == current_user.id)
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    result = await db.execute(select(ParsedFile).where(ParsedFile.repo_id == repo_id))
+    parsed_files = result.scalars().all()
+    if not parsed_files:
+        raise HTTPException(status_code=400, detail="Parse the repository first")
+
+    files_data = [
+        {"file_path": f.file_path, "language": f.language, "symbols": json.loads(f.symbols)}
+        for f in parsed_files
+    ]
+    content = _generate_doc_type(repo.full_name, files_data, doc_subtype)
+
+    existing = await db.execute(
+        select(Documentation).where(Documentation.repo_id == repo_id, Documentation.doc_type == doc_subtype)
+    )
+    doc = existing.scalar_one_or_none()
+    if doc:
+        doc.content = content
+    else:
+        doc = Documentation(repo_id=repo_id, doc_type=doc_subtype, content=content)
+        db.add(doc)
+    await db.commit()
+    return {"content": content, "doc_type": doc_subtype}
+
+
+@router.get("/{repo_id}/generate-{doc_type}")
+async def get_generated_doc(
+    repo_id: int,
+    doc_type: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generic getter for any saved documentation by type."""
+    result = await db.execute(
+        select(Repository).where(Repository.id == repo_id, Repository.user_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    result = await db.execute(
+        select(Documentation).where(Documentation.repo_id == repo_id, Documentation.doc_type == doc_type)
+    )
+    doc = result.scalar_one_or_none()
+    return {"content": doc.content if doc else None}
