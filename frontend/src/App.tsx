@@ -95,6 +95,30 @@ interface WebhookStatus {
   last_triggered_at?: string | null;
 }
 
+interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  doc_type: string;
+  prompt: string;
+  variables: string[];
+  category: string;
+}
+
+interface EditHistoryEntry {
+  prompt: string;
+  content_preview: string;
+  generated_at: string;
+}
+
+interface ValidationResult {
+  valid: boolean;
+  issues: string[];
+  warnings: string[];
+  character_count: number;
+  estimated_tokens: number;
+}
+
 type RightPanel = "empty" | "parse" | "readme" | "docstrings" | "search" | "staleness" | "analytics" | "webhook";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -296,6 +320,26 @@ function App() {
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [webhookSaved, setWebhookSaved] = useState<null | { webhook_url: string; instructions: Record<string, string> }>(null);
   const [webhookError, setWebhookError] = useState("");
+
+
+  // Prompt Editor
+const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplate | null>(null);
+const [activePrompt, setActivePrompt] = useState("");
+const [activeDocType, setActiveDocType] = useState("readme");
+const [promptValidation, setPromptValidation] = useState<ValidationResult | null>(null);
+const [previewContent, setPreviewContent] = useState("");
+const [previewing, setPreviewing] = useState(false);
+const [previewError, setPreviewError] = useState("");
+const [generatingWithPrompt, setGeneratingWithPrompt] = useState(false);
+const [promptGenError, setPromptGenError] = useState("");
+const [promptGenSuccess, setPromptGenSuccess] = useState("");
+const [editHistory, setEditHistory] = useState<EditHistoryEntry[]>([]);
+const [loadingHistory, setLoadingHistory] = useState(false);
+const [createPR, setCreatePR] = useState(false);
+const [promptTab, setPromptTab] = useState<"editor" | "preview" | "history">("editor");
+const [validating, setValidating] = useState(false);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -580,6 +624,97 @@ function App() {
     setUser(null); setRepos([]); setSelectedRepo(null); setParseResults([]); setRightPanel("empty");
   };
 
+  async function loadPromptTemplates() {
+  try {
+    const res = await fetch(`${API}/prompt-editor/templates`);
+    if (res.ok) {
+      const data = await res.json();
+      setPromptTemplates(data.templates);
+    }
+  } catch { /* silent */ }
+}
+
+async function handleValidatePrompt() {
+  if (!activePrompt.trim()) return;
+  setValidating(true);
+  try {
+    const res = await fetch(`${API}/prompt-editor/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: activePrompt, doc_type: activeDocType }),
+    });
+    if (res.ok) setPromptValidation(await res.json());
+  } catch { /* silent */ }
+  finally { setValidating(false); }
+}
+
+async function handlePreviewPrompt() {
+  if (!user || !selectedRepo || !activePrompt.trim()) return;
+  setPreviewing(true); setPreviewError(""); setPreviewContent(""); setPromptTab("preview");
+  try {
+    const res = await fetch(`${API}/prompt-editor/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
+      body: JSON.stringify({ prompt: activePrompt, doc_type: activeDocType, repo_id: selectedRepo.id }),
+    });
+    if (!res.ok) { setPreviewError("Preview failed. Is the repo parsed?"); setPromptTab("editor"); return; }
+    const data = await res.json();
+    setPreviewContent(data.content);
+  } catch { setPreviewError("Network error during preview."); setPromptTab("editor"); }
+  finally { setPreviewing(false); }
+}
+
+async function handleGenerateWithPrompt() {
+  if (!user || !selectedRepo || !activePrompt.trim()) return;
+  setGeneratingWithPrompt(true); setPromptGenError(""); setPromptGenSuccess("");
+  try {
+    const res = await fetch(`${API}/prompt-editor/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
+      body: JSON.stringify({
+        prompt: activePrompt,
+        doc_type: activeDocType,
+        repo_id: selectedRepo.id,
+        create_pr: createPR,
+      }),
+    });
+    if (!res.ok) { setPromptGenError("Generation failed."); return; }
+    const data = await res.json();
+    setPromptGenSuccess(data.pr ? `✅ Saved & PR created: ${data.pr.pr_url}` : "✅ Documentation saved.");
+    loadEditHistory();
+    loadHealthScore(selectedRepo);
+  } catch { setPromptGenError("Network error."); }
+  finally { setGeneratingWithPrompt(false); }
+}
+
+async function loadEditHistory() {
+  if (!user || !selectedRepo) return;
+  setLoadingHistory(true);
+  try {
+    const res = await fetch(`${API}/prompt-editor/${selectedRepo.id}/history/${activeDocType}`, {
+      headers: { Authorization: `Bearer ${user.access_token}` },
+    });
+    if (res.ok) setEditHistory((await res.json()).history);
+  } catch { /* silent */ }
+  finally { setLoadingHistory(false); }
+}
+
+function handleSelectTemplate(tpl: PromptTemplate) {
+  setSelectedTemplate(tpl);
+  setActivePrompt(tpl.prompt);
+  setActiveDocType(tpl.doc_type);
+  setPromptValidation(null);
+  setPreviewContent("");
+  setPromptGenSuccess("");
+}
+
+function handleOpenPromptEditor() {
+  setPromptEditorOpen(true);
+  setPromptTab("editor");
+  if (promptTemplates.length === 0) loadPromptTemplates();
+  if (selectedRepo) loadEditHistory();
+}  
+
   const totalSymbols = parseResults.reduce((a, f) => a + f.symbols.length, 0);
   const totalStars = repos.reduce((a, r) => a + r.stars, 0);
   const avgCoverage = Object.values(healthScores).filter(h => h.coverage_pct !== null).reduce((a, h, _, arr) => a + (h.coverage_pct ?? 0) / arr.length, 0);
@@ -608,15 +743,15 @@ function App() {
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
 
-  const tabs: { id: RightPanel; label: string; icon: string }[] = [
-    { id: "parse", label: "Structure", icon: "⚙" },
-    { id: "readme", label: "README", icon: "📄" },
-    ...(docstringsFile ? [{ id: "docstrings" as RightPanel, label: "Docstrings", icon: "💬" }] : []),
-    { id: "search", label: "Search", icon: "🔍" },
-    { id: "analytics", label: "Analytics", icon: "📊" },
-    { id: "staleness", label: "Health", icon: "🩺" },
-    { id: "webhook", label: "PR Bot", icon: "🤖" },
-  ];
+const tabs: { id: RightPanel; label: string; icon: string }[] = [
+  { id: "parse", label: "Structure", icon: "⚙" },
+  { id: "readme", label: "README", icon: "📄" },
+  ...(docstringsFile ? [{ id: "docstrings" as RightPanel, label: "Docstrings", icon: "💬" }] : []),
+  { id: "search", label: "Search", icon: "🔍" },
+  { id: "analytics", label: "Analytics", icon: "📊" },
+  { id: "staleness", label: "Health", icon: "🩺" },
+  { id: "webhook", label: "PR Bot", icon: "🤖" },
+];
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-[#16171d]">
@@ -630,6 +765,19 @@ function App() {
           <Badge className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-[10px]">Beta</Badge>
         </div>
         <div className="flex items-center gap-3">
+            <button
+    onClick={() => {
+      if (!selectedRepo) {
+        alert("Select a repository first");
+        return;
+      }
+      handleOpenPromptEditor();
+    }}
+    className="hidden sm:flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+  >
+    ✏️ Prompt Editor
+  </button>
+
           <img src={user.avatar_url} alt="avatar" className="w-8 h-8 rounded-full border-2 border-gray-200 dark:border-gray-700" />
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:block">{user.username}</span>
           <button onClick={handleLogout}
@@ -705,6 +853,14 @@ function App() {
                        { label: "🔍 Search", action: () => handleOpenSearch(repo), busy: false },
                        { label: "📊 Analytics", action: () => handleOpenAnalytics(repo), busy: loadingAnalytics && selectedRepo?.id === repo.id },
                        { label: "🤖 PR Bot", action: () => handleOpenWebhook(repo), busy: false },
+                       { 
+  label: "✏️ Prompt", 
+  action: () => { 
+    setSelectedRepo(repo); 
+    handleOpenPromptEditor(); 
+  }, 
+  busy: false 
+},
                      ].map(({ label, action, busy }) => (
                        <button key={label}
                          onClick={(e) => { e.stopPropagation(); action(); }} disabled={busy}
@@ -1202,8 +1358,222 @@ function App() {
           </div>
         </main>
       </div>
+
+      {/* ── Prompt Editor Modal ── */}
+{promptEditorOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
+
+      {/* Modal Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">✏️ Prompt-Based Editor</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Customize AI prompts to generate and update any documentation type</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedRepo && (
+            <Badge className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+              📂 {selectedRepo.full_name}
+            </Badge>
+          )}
+          <button onClick={() => setPromptEditorOpen(false)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-lg">✕</button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Left: Template Library */}
+        <div className="w-60 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 flex flex-col bg-gray-50 dark:bg-gray-900/50 overflow-y-auto">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Templates</p>
+          </div>
+          {["documentation", "engineering", "code"].map((cat) => (
+            <div key={cat} className="mb-1">
+              <p className="px-4 pt-3 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{cat}</p>
+              {promptTemplates.filter(t => t.category === cat).map(tpl => (
+                <button key={tpl.id}
+                  onClick={() => handleSelectTemplate(tpl)}
+                  className={`w-full text-left px-4 py-2.5 transition-colors ${selectedTemplate?.id === tpl.id ? "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300" : "hover:bg-white dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"}`}>
+                  <p className="text-sm font-medium">{tpl.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{tpl.description}</p>
+                </button>
+              ))}
+            </div>
+          ))}
+          {promptTemplates.length === 0 && (
+            <div className="px-4 py-6 text-xs text-gray-400 text-center">Loading templates…</div>
+          )}
+        </div>
+
+        {/* Right: Editor + Preview + History */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Sub-tabs */}
+          <div className="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-800">
+            {(["editor", "preview", "history"] as const).map(t => (
+              <button key={t} onClick={() => { setPromptTab(t); if (t === "history") loadEditHistory(); }}
+                className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors capitalize ${promptTab === t ? "border-purple-500 text-purple-600 dark:text-purple-400" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+                {t === "editor" ? "✏️ Editor" : t === "preview" ? "👁 Preview" : "🕐 History"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5">
+
+            {/* ── Editor Tab ── */}
+            {promptTab === "editor" && (
+              <div className="space-y-4">
+
+                {/* Doc Type Selector */}
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-24 flex-shrink-0">Doc Type</label>
+                  <select value={activeDocType} onChange={e => { setActiveDocType(e.target.value); setPromptValidation(null); }}
+                    className="flex-1 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-400/50">
+                    <option value="readme">README</option>
+                    <option value="architecture">Architecture Doc</option>
+                    <option value="api_docs">API Documentation</option>
+                    <option value="runbook">Runbook</option>
+                    <option value="onboarding">Onboarding Guide</option>
+                    <option value="code_docs">Code-Level Docs</option>
+                  </select>
+                </div>
+
+                {/* Prompt Textarea */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Prompt</label>
+                    <span className="text-xs text-gray-400">
+                      {activePrompt.length} chars · ~{Math.round(activePrompt.length / 4)} tokens
+                    </span>
+                  </div>
+                  <textarea
+                    value={activePrompt}
+                    onChange={e => { setActivePrompt(e.target.value); setPromptValidation(null); setPromptGenSuccess(""); }}
+                    rows={12}
+                    placeholder="Write your documentation prompt here…&#10;&#10;Use {context} to inject codebase structure&#10;Use {repo_name} for the repository name&#10;Use {file_path}, {language}, {symbols} for code-level docs"
+                    className="w-full text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400/50 font-mono resize-none transition"
+                  />
+                </div>
+
+                {/* Validation Result */}
+                {promptValidation && (
+                  <div className={`rounded-xl border p-4 text-sm ${promptValidation.valid ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"}`}>
+                    <p className={`font-medium mb-2 ${promptValidation.valid ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                      {promptValidation.valid ? "✅ Prompt looks good" : "❌ Validation issues"}
+                    </p>
+                    {promptValidation.issues.map((issue, i) => (
+                      <p key={i} className="text-red-600 dark:text-red-400 text-xs">⚠ {issue}</p>
+                    ))}
+                    {promptValidation.warnings.map((w, i) => (
+                      <p key={i} className="text-yellow-600 dark:text-yellow-400 text-xs">💡 {w}</p>
+                    ))}
+                  </div>
+                )}
+
+                {promptGenSuccess && (
+                  <div className="rounded-xl border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-400">
+                    {promptGenSuccess}
+                  </div>
+                )}
+                {promptGenError && <ErrorMsg msg={promptGenError} />}
+
+                {/* PR toggle */}
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <div onClick={() => setCreatePR(v => !v)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${createPR ? "bg-purple-500" : "bg-gray-300 dark:bg-gray-600"}`}>
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${createPR ? "translate-x-4" : "translate-x-1"}`} />
+                  </div>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Create GitHub PR automatically after generating
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {/* ── Preview Tab ── */}
+            {promptTab === "preview" && (
+              <div>
+                {previewing ? <Spinner label="Generating preview with AI…" /> :
+                 previewError ? <ErrorMsg msg={previewError} /> :
+                 previewContent ? (
+                   <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+                     <div className="flex items-center justify-between mb-4">
+                       <Badge className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Preview — not saved</Badge>
+                       <button onClick={() => handleCopy(previewContent)}
+                         className="text-xs text-gray-400 hover:text-purple-600 transition-colors">
+                         {copied ? "✓ Copied!" : "Copy"}
+                       </button>
+                     </div>
+                     <MarkdownRenderer content={previewContent} />
+                   </div>
+                 ) : (
+                   <EmptyState icon="👁" title="No preview yet"
+                     sub='Click "Preview" to see generated output without saving.' />
+                 )}
+              </div>
+            )}
+
+            {/* ── History Tab ── */}
+            {promptTab === "history" && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Edit History — {activeDocType}
+                  </h3>
+                  <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-500">{editHistory.length} entries</Badge>
+                </div>
+                {loadingHistory ? <Spinner label="Loading history…" /> :
+                 editHistory.length === 0 ? <EmptyState icon="🕐" title="No history yet" sub="Generate docs to start tracking edits." /> : (
+                   <div className="space-y-3">
+                     {editHistory.map((entry, i) => (
+                       <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+                         <div className="flex items-center justify-between mb-2">
+                           <span className="text-xs text-gray-400">{new Date(entry.generated_at).toLocaleString()}</span>
+                           <button onClick={() => { setActivePrompt(entry.prompt); setPromptTab("editor"); }}
+                             className="text-xs text-purple-600 hover:underline">Restore prompt</button>
+                         </div>
+                         <p className="text-xs font-mono text-gray-500 dark:text-gray-400 line-clamp-2 mb-2 bg-gray-50 dark:bg-gray-800 rounded p-2">
+                           {entry.prompt.slice(0, 200)}…
+                         </p>
+                         <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-3">{entry.content_preview}</p>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer Actions */}
+          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span>Variables: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{"{context}"}</code> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{"{repo_name}"}</code> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{"{symbols}"}</code></span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleValidatePrompt} disabled={!activePrompt.trim() || validating}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors">
+                {validating ? "Checking…" : "🛡 Validate"}
+              </button>
+              <button onClick={handlePreviewPrompt} disabled={!activePrompt.trim() || !selectedRepo || previewing}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors">
+                {previewing ? "Previewing…" : "👁 Preview"}
+              </button>
+              <button onClick={handleGenerateWithPrompt}
+                disabled={!activePrompt.trim() || !selectedRepo || generatingWithPrompt || (promptValidation !== null && !promptValidation.valid)}
+                className="px-5 py-2 text-sm font-semibold rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                {generatingWithPrompt ? "Generating…" : createPR ? "✨ Generate & Create PR" : "✨ Generate & Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
 
 export default App;
+
