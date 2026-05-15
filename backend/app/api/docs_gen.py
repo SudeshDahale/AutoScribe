@@ -133,3 +133,61 @@ async def generate_docstrings_for_file(
 
     await db.commit()
     return {"docstrings": json.loads(docstrings_json)}
+
+@router.get("/{repo_id}/analytics")
+async def get_repo_analytics(
+    repo_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns doc coverage %, staleness breakdown, and symbol counts
+    for the Analytics dashboard panel.
+    """
+    from app.models.file_snapshot import FileSnapshot
+    from app.core.staleness_detector import get_staleness_report
+
+    result = await db.execute(
+        select(Repository).where(Repository.id == repo_id, Repository.user_id == current_user.id)
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Parsed files
+    result = await db.execute(select(ParsedFile).where(ParsedFile.repo_id == repo_id))
+    parsed_files = result.scalars().all()
+
+    total_files = len(parsed_files)
+    total_symbols = sum(len(json.loads(f.symbols)) for f in parsed_files)
+    documented_symbols = sum(
+        len([s for s in json.loads(f.symbols) if s.get("docstring")])
+        for f in parsed_files
+    )
+
+    # Documentation records
+    result = await db.execute(
+        select(Documentation).where(Documentation.repo_id == repo_id)
+    )
+    docs = result.scalars().all()
+    has_readme = any(d.doc_type == "readme" for d in docs)
+    docstring_files = [d for d in docs if d.doc_type.startswith("docstrings:")]
+
+    # Staleness
+    staleness = await get_staleness_report(db, repo_id)
+
+    coverage_pct = round((documented_symbols / total_symbols * 100) if total_symbols > 0 else 0, 1)
+
+    return {
+        "repo_id": repo_id,
+        "total_files": total_files,
+        "total_symbols": total_symbols,
+        "documented_symbols": documented_symbols,
+        "coverage_pct": coverage_pct,
+        "has_readme": has_readme,
+        "docstring_files_count": len(docstring_files),
+        "stale_count": staleness["stale_files_count"],
+        "stale_breakdown": staleness["breakdown"],
+        "last_documented_at": staleness["last_documented_at"],
+        "status": staleness["status"],
+    }
