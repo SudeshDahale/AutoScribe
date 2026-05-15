@@ -10,6 +10,7 @@ from app.models import user, repository, analysis_job, documentation  # noqa
 from app.models.parsed_file import ParsedFile  # noqa
 from app.models.file_snapshot import FileSnapshot  # noqa
 from app.models.webhook_config import WebhookConfig  # noqa
+from app.api import prompt_editor
 
 app = FastAPI(
     title="AutoScribe API",
@@ -33,7 +34,7 @@ app.include_router(docs_gen.router, prefix="/api/v1/repos", tags=["docs"])
 app.include_router(staleness.router, prefix="/api/v1/repos", tags=["staleness"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(search.router, prefix="/api/v1/repos", tags=["search"])  # NEW
-
+app.include_router(prompt_editor.router, prefix="/api/v1/prompt-editor", tags=["prompt-editor"])
 
 @app.on_event("startup")
 async def startup():
