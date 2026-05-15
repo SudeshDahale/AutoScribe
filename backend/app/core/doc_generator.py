@@ -94,3 +94,66 @@ Only output the JSON array, nothing else."""
         return json.dumps(parsed)
     except Exception:
         return json.dumps([{"name": s["name"], "type": s["type"], "docstring": ""} for s in symbols])
+
+
+def _generate_doc_type(repo_full_name: str, parsed_files: list[dict], doc_type: str) -> str:
+    """Generate a specific documentation type from parsed file structure."""
+    summary_lines = []
+    for f in parsed_files[:40]:
+        symbols = [f"{s['type']} {s['name']}" for s in f["symbols"][:10]]
+        summary_lines.append(f"- {f['file_path']} ({f['language']}): {', '.join(symbols)}")
+    summary = "\n".join(summary_lines)
+
+    prompts = {
+        "architecture": f"""Repository: {repo_full_name}
+Codebase:\n{summary}
+
+Write architecture documentation:
+1. System context and purpose
+2. Key components and responsibilities (based on file/symbol names)
+3. Data flow between components
+4. Technology choices observed
+5. Deployment notes
+6. Trade-offs and open questions
+Output Markdown with clear headings.""",
+
+        "api_docs": f"""Repository: {repo_full_name}
+Codebase:\n{summary}
+
+Generate API documentation:
+1. Authentication mechanism (inferred from auth files/functions)
+2. Base URL and versioning
+3. All detected endpoints with: method, path, description, params, response, errors, curl example
+4. Rate limiting and pagination
+Output Markdown.""",
+
+        "runbook": f"""Repository: {repo_full_name}
+Codebase:\n{summary}
+
+Write an operational runbook:
+1. Service overview and SLOs
+2. Environment variables and configuration
+3. Local development setup
+4. Deployment steps
+5. Rollback procedure
+6. Common failure modes and fixes
+7. Monitoring checklist
+Output Markdown.""",
+
+        "onboarding": f"""Repository: {repo_full_name}
+Codebase:\n{summary}
+
+Write a new-engineer onboarding guide:
+1. Project purpose and team context
+2. Prerequisites and local setup
+3. Codebase tour
+4. Key concepts and domain vocabulary
+5. First tasks
+6. Code review norms
+7. Useful commands
+Output Markdown.""",
+    }
+
+    prompt = prompts.get(doc_type, f"Describe the repository {repo_full_name} based on:\n{summary}")
+    system = "You are a senior engineer writing precise technical documentation. Output only Markdown."
+    return _chat(prompt, system)
