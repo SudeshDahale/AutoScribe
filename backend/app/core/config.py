@@ -1,3 +1,4 @@
+# Replace the entire Settings class with this:
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     GITHUB_WEBHOOK_SECRET: str = ""
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
     GROQ_API_KEY: str = ""
+    BASE_URL: str = "http://localhost:8000"  # BUG FIX: set this to your public URL in .env
 
     class Config:
         env_file = ".env"
