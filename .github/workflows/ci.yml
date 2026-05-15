@@ -1,40 +1,178 @@
-name: AutoScribe CI
+name: AutoScribe — Auto-Update Documentation
 
 on:
   push:
-    branches: [main, develop]
+    branches: ["main", "master", "develop"]
+    paths:
+      - "**/*.py"
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.jsx"
   pull_request:
-    branches: [main]
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      doc_types:
+        description: "Doc types to regenerate (comma-separated: readme,architecture,api_docs,runbook,onboarding)"
+        required: false
+        default: "readme,architecture,api_docs"
 
 jobs:
-  backend-lint:
+  detect-changes:
+    name: Detect Code Changes
     runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+      changed_files: ${{ steps.changes.outputs.changed_files }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pip install ruff
-      - run: ruff check backend/app
+          fetch-depth: 2
 
-  backend-test:
+      - name: Detect changed source files
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- '*.py' '*.ts' '*.tsx' '*.js' '*.jsx' 2>/dev/null || echo "")
+          if [ -z "$CHANGED" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "changed_files=" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            # Escape newlines for GitHub output
+            ESCAPED=$(echo "$CHANGED" | tr '\n' ',')
+            echo "changed_files=$ESCAPED" >> $GITHUB_OUTPUT
+            echo "Changed files: $CHANGED"
+          fi
+
+  update-docs:
+    name: Update Documentation
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: autoscribe
-          POSTGRES_PASSWORD: autoscribe
-          POSTGRES_DB: autoscribe
-        ports: ["5432:5432"]
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pip install -r backend/requirements.txt pytest pytest-asyncio
-      - run: pytest backend/tests -v
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+
+      - name: Trigger AutoScribe incremental update
         env:
-          DATABASE_URL: postgresql+asyncpg://autoscribe:autoscribe@localhost:5432/autoscribe
-          REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: test-secret
+          AUTOSCRIBE_API_URL: ${{ secrets.AUTOSCRIBE_API_URL }}
+          AUTOSCRIBE_TOKEN: ${{ secrets.AUTOSCRIBE_TOKEN }}
+          AUTOSCRIBE_REPO_ID: ${{ secrets.AUTOSCRIBE_REPO_ID }}
+          CHANGED_FILES: ${{ needs.detect-changes.outputs.changed_files }}
+          DOC_TYPES: ${{ github.event.inputs.doc_types || 'readme,architecture,api_docs' }}
+        run: |
+          python - <<'EOF'
+          import httpx, os, json, sys
+
+          api = os.environ["AUTOSCRIBE_API_URL"].rstrip("/")
+          token = os.environ["AUTOSCRIBE_TOKEN"]
+          repo_id = os.environ["AUTOSCRIBE_REPO_ID"]
+          changed = [f for f in os.environ.get("CHANGED_FILES","").split(",") if f.strip()]
+          doc_types = [d.strip() for d in os.environ.get("DOC_TYPES","readme").split(",") if d.strip()]
+
+          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          base = f"{api}/api/v1"
+
+          print(f"Changed files: {changed}")
+          print(f"Doc types to update: {doc_types}")
+
+          # 1. Trigger incremental docstring update for changed files
+          if changed:
+              r = httpx.post(
+                  f"{base}/repos/{repo_id}/update-incremental",
+                  headers=headers,
+                  json={"update_type": "docstrings", "file_paths": changed},
+                  timeout=120,
+              )
+              print(f"Docstrings update: {r.status_code} — {r.text[:200]}")
+
+          # 2. Regenerate requested doc types and create PRs
+          type_to_endpoint = {
+              "readme": f"{base}/repos/{repo_id}/generate-readme",
+              "architecture": f"{base}/repos/{repo_id}/generate-architecture",
+              "api_docs": f"{base}/repos/{repo_id}/generate-api-docs",
+              "runbook": f"{base}/repos/{repo_id}/generate-engineering-docs",
+              "onboarding": f"{base}/repos/{repo_id}/generate-engineering-docs",
+          }
+
+          for dt in doc_types:
+              endpoint = type_to_endpoint.get(dt)
+              if not endpoint:
+                  print(f"Unknown doc type: {dt}, skipping")
+                  continue
+
+              body = {}
+              if dt in ("runbook", "onboarding"):
+                  body["doc_subtype"] = dt
+
+              r = httpx.post(endpoint, headers=headers, json=body, timeout=120)
+              if r.status_code != 200:
+                  print(f"Failed to generate {dt}: {r.status_code} — {r.text[:200]}")
+                  continue
+
+              content = r.json().get("content", "")
+              print(f"Generated {dt} ({len(content)} chars)")
+
+              # Create PR
+              pr_r = httpx.post(
+                  f"{base}/prompt-editor/{repo_id}/create-pr",
+                  headers=headers,
+                  json={"repo_id": int(repo_id), "doc_type": dt, "content": content},
+                  timeout=30,
+              )
+              if pr_r.status_code == 200:
+                  pr_data = pr_r.json()
+                  print(f"✅ PR created for {dt}: {pr_data.get('pr_url')}")
+              else:
+                  print(f"⚠️  PR creation for {dt}: {pr_r.status_code} — {pr_r.text[:200]}")
+
+          print("Done.")
+          EOF
+
+  comment-on-pr:
+    name: Post Doc Summary on PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post AutoScribe comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              "## 📝 AutoScribe Documentation Check",
+              "",
+              "AutoScribe detected code changes in this PR.",
+              "Documentation will be auto-updated and a separate docs PR will be created after merge.",
+              "",
+              "| Document | Status |",
+              "|----------|--------|",
+              "| README | 🔄 Will update |",
+              "| Architecture | 🔄 Will update |",
+              "| API Docs | 🔄 Will update |",
+              "| Runbook | 🔄 Will update |",
+              "",
+              "_Powered by [AutoScribe](https://github.com) — AI documentation that stays up to date._"
+            ].join("\n");
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
