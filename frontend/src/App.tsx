@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
 
 const API = "http://localhost:8000/api/v1";
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface User {
   username: string;
@@ -57,32 +59,113 @@ interface IndexStats {
   symbol_count: number;
 }
 
-type RightPanel = "empty" | "parse" | "readme" | "docstrings" | "search";
+interface StalenessReport {
+  is_stale: boolean;
+  stale_files: string[];
+  total_files: number;
+  stale_count: number;
+}
+
+type RightPanel = "empty" | "parse" | "readme" | "docstrings" | "search" | "staleness";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric", month: "short", day: "numeric",
+  });
 }
 
-const LANG_ICON: Record<string, string> = { python: "🐍", javascript: "🟨", typescript: "🔷", tsx: "🔷" };
-const SYMBOL_ICON: Record<string, string> = { function: "ƒ", class: "◆", method: "∷", interface: "⬡", type: "τ" };
+const LANG_COLOR: Record<string, string> = {
+  python: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  javascript: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  typescript: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  tsx: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+};
+const LANG_ICON: Record<string, string> = {
+  python: "🐍", javascript: "🟨", typescript: "🔷", tsx: "🔷",
+};
+const SYMBOL_ICON: Record<string, string> = {
+  function: "ƒ", class: "◆", method: "∷", interface: "⬡", type: "τ",
+};
+const SYMBOL_COLOR: Record<string, string> = {
+  function: "text-purple-500", class: "text-blue-500",
+  method: "text-green-500", interface: "text-orange-500", type: "text-pink-500",
+};
+
+// ── Reusable mini-components ─────────────────────────────────────────────────
+
+function Badge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+function Spinner({ label }: { label?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-12">
+      <div className="spinner" />
+      {label && <p className="text-sm text-gray-400">{label}</p>}
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, sub }: { icon?: string; title: string; sub?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 py-16 text-center">
+      {icon && <span className="text-4xl">{icon}</span>}
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+      {sub && <p className="text-xs text-gray-400 dark:text-gray-500">{sub}</p>}
+    </div>
+  );
+}
+
+function ErrorMsg({ msg }: { msg: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+      <span>⚠</span> {msg}
+    </div>
+  );
+}
 
 function MarkdownRenderer({ content }: { content: string }) {
   const lines = content.split("\n");
   return (
-    <div className="markdown-body">
+    <div className="prose prose-sm dark:prose-invert max-w-none">
       {lines.map((line, i) => {
-        if (line.startsWith("# ")) return <h1 key={i}>{line.slice(2)}</h1>;
-        if (line.startsWith("## ")) return <h2 key={i}>{line.slice(3)}</h2>;
-        if (line.startsWith("### ")) return <h3 key={i}>{line.slice(4)}</h3>;
-        if (line.startsWith("- ") || line.startsWith("* ")) return <li key={i}>{line.slice(2)}</li>;
-        if (line.startsWith("```")) return <div key={i} className="code-fence-marker" />;
-        if (line.trim() === "") return <br key={i} />;
-        return <p key={i}>{line}</p>;
+        if (line.startsWith("# ")) return <h1 key={i} className="text-2xl font-bold mt-6 mb-3 text-gray-900 dark:text-gray-100">{line.slice(2)}</h1>;
+        if (line.startsWith("## ")) return <h2 key={i} className="text-lg font-semibold mt-5 mb-2 text-gray-800 dark:text-gray-200">{line.slice(3)}</h2>;
+        if (line.startsWith("### ")) return <h3 key={i} className="text-base font-semibold mt-4 mb-1 text-gray-700 dark:text-gray-300">{line.slice(4)}</h3>;
+        if (line.startsWith("- ") || line.startsWith("* ")) return <li key={i} className="ml-5 list-disc text-sm">{line.slice(2)}</li>;
+        if (line.startsWith("```")) return <div key={i} className="border-t border-dashed border-gray-200 dark:border-gray-700 my-3" />;
+        if (line.trim() === "") return <div key={i} className="h-3" />;
+        return <p key={i} className="text-sm leading-relaxed">{line}</p>;
       })}
     </div>
   );
 }
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
+function StatCard({ icon, label, value, sub }: { icon: string; label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex items-start gap-3 shadow-sm">
+      <div className="w-10 h-10 rounded-lg bg-accent-light flex items-center justify-center text-xl flex-shrink-0">
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
+        <p className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{value}</p>
+        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────────
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -91,6 +174,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -104,29 +188,31 @@ function App() {
   const [readmeError, setReadmeError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const [docstringsFile, setDocstringsFile] = useState<string>("");
+  const [docstringsFile, setDocstringsFile] = useState("");
   const [docstrings, setDocstrings] = useState<Docstring[]>([]);
   const [generatingDocstrings, setGeneratingDocstrings] = useState(false);
   const [docstringsError, setDocstringsError] = useState("");
 
-  // ── Search + RAG state ──────────────────────────────────────────────────
   const [indexStats, setIndexStats] = useState<IndexStats | null>(null);
   const [indexing, setIndexing] = useState(false);
   const [indexError, setIndexError] = useState("");
-
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchError, setSearchError] = useState("");
-
   const [ragQuestion, setRagQuestion] = useState("");
   const [ragAsking, setRagAsking] = useState(false);
   const [ragAnswer, setRagAnswer] = useState("");
   const [ragSources, setRagSources] = useState<SearchResult[]>([]);
   const [ragError, setRagError] = useState("");
-
   const [searchMode, setSearchMode] = useState<"search" | "ask">("search");
-  // ────────────────────────────────────────────────────────────────────────
+
+  const [stalenessReport, setStalenessReport] = useState<StalenessReport | null>(null);
+  const [checkingStale, setCheckingStale] = useState(false);
+  const [stalenessError, setStalenessError] = useState("");
+  const [updatingDocs, setUpdatingDocs] = useState(false);
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -146,6 +232,8 @@ function App() {
   }, []);
 
   useEffect(() => { if (user) fetchRepos(); }, [user]);
+
+  // ── API Handlers ─────────────────────────────────────────────────────────────
 
   async function fetchRepos() {
     if (!user) return;
@@ -209,8 +297,7 @@ function App() {
     setGeneratingReadme(true); setReadmeError(""); setRightPanel("readme");
     try {
       const res = await fetch(`${API}/repos/${selectedRepo.id}/generate-readme`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${user.access_token}` },
+        method: "POST", headers: { Authorization: `Bearer ${user.access_token}` },
       });
       if (!res.ok) { setReadmeError("Failed to generate README. Is the repo parsed?"); return; }
       const data = await res.json();
@@ -236,23 +323,14 @@ function App() {
     finally { setGeneratingDocstrings(false); }
   }
 
-  // ── Search + RAG handlers ────────────────────────────────────────────────
-
   async function handleOpenSearch(repo: Repo) {
     if (!user) return;
-    setSelectedRepo(repo);
-    setRightPanel("search");
-    setSearchResults([]);
-    setRagAnswer("");
-    setRagSources([]);
-    setIndexError("");
-    // fetch index stats
+    setSelectedRepo(repo); setRightPanel("search");
+    setSearchResults([]); setRagAnswer(""); setRagSources([]); setIndexError("");
     try {
-      const res = await fetch(`${API}/repos/${repo.id}/index/stats`, {
-        headers: { Authorization: `Bearer ${user.access_token}` },
-      });
+      const res = await fetch(`${API}/repos/${repo.id}/index/stats`, { headers: { Authorization: `Bearer ${user.access_token}` } });
       if (res.ok) setIndexStats(await res.json());
-    } catch { /* silently ignore */ }
+    } catch { /* silent */ }
   }
 
   async function handleIndexRepo() {
@@ -260,14 +338,9 @@ function App() {
     setIndexing(true); setIndexError("");
     try {
       const res = await fetch(`${API}/repos/${selectedRepo.id}/index`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${user.access_token}` },
+        method: "POST", headers: { Authorization: `Bearer ${user.access_token}` },
       });
-      if (!res.ok) {
-        const err = await res.json();
-        setIndexError(err.detail || "Indexing failed.");
-        return;
-      }
+      if (!res.ok) { const err = await res.json(); setIndexError(err.detail || "Indexing failed."); return; }
       const data = await res.json();
       setIndexStats({ indexed: true, symbol_count: data.symbol_count });
     } catch { setIndexError("Network error during indexing."); }
@@ -303,13 +376,36 @@ function App() {
       });
       if (!res.ok) { setRagError("Failed to get answer."); return; }
       const data = await res.json();
-      setRagAnswer(data.answer);
-      setRagSources(data.sources);
+      setRagAnswer(data.answer); setRagSources(data.sources);
     } catch { setRagError("Network error."); }
     finally { setRagAsking(false); }
   }
 
-  // ────────────────────────────────────────────────────────────────────────
+  async function handleCheckStaleness(repo: Repo) {
+    if (!user) return;
+    setSelectedRepo(repo); setRightPanel("staleness");
+    setStalenessReport(null); setCheckingStale(true); setStalenessError("");
+    try {
+      const res = await fetch(`${API}/repos/${repo.id}/staleness`, { headers: { Authorization: `Bearer ${user.access_token}` } });
+      if (!res.ok) { setStalenessError("Failed to check staleness."); return; }
+      setStalenessReport(await res.json());
+    } catch { setStalenessError("Network error."); }
+    finally { setCheckingStale(false); }
+  }
+
+  async function handleIncrementalUpdate(updateType: "docstrings" | "readme" | "all") {
+    if (!user || !selectedRepo) return;
+    setUpdatingDocs(true);
+    try {
+      await fetch(`${API}/repos/${selectedRepo.id}/update-incremental`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
+        body: JSON.stringify({ update_type: updateType }),
+      });
+      await handleCheckStaleness(selectedRepo);
+    } catch { /* silent */ }
+    finally { setUpdatingDocs(false); }
+  }
 
   function toggleFile(path: string) {
     setExpandedFiles((prev) => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n; });
@@ -327,354 +423,545 @@ function App() {
     setUser(null); setRepos([]); setSelectedRepo(null); setParseResults([]); setRightPanel("empty");
   };
 
+  // ── Dashboard stats ───────────────────────────────────────────────────────────
+
+  const totalSymbols = parseResults.reduce((a, f) => a + f.symbols.length, 0);
+  const totalStars = repos.reduce((a, r) => a + r.stars, 0);
+  const languages = [...new Set(repos.map((r) => r.language).filter(Boolean))];
+
+  // ── Login screen ──────────────────────────────────────────────────────────────
+
   if (!user) {
     return (
-      <div className="app">
-        <div className="login-box">
-          <h1>AutoScribe</h1>
-          <p>AI-powered documentation for your GitHub repos</p>
-          <button onClick={handleLogin} className="github-btn">Login with GitHub</button>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900">
+        <div className="w-full max-w-sm mx-4">
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-10 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-accent-light flex items-center justify-center text-3xl mx-auto mb-6">
+              📝
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">AutoScribe</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+              AI-powered documentation for your GitHub repos
+            </p>
+            <button
+              onClick={handleLogin}
+              className="w-full flex items-center justify-center gap-3 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-5 py-3 text-sm font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              Login with GitHub
+            </button>
+            <p className="text-xs text-gray-400 mt-6">Free · No credit card required</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="app">
-      <div className="navbar">
-        <h2>AutoScribe</h2>
-        <div className="user-info">
-          <img src={user.avatar_url} alt="avatar" width={32} height={32} />
-          <span>{user.username}</span>
-          <button onClick={handleLogout} className="btn-ghost">Logout</button>
-        </div>
-      </div>
+  // ── Main Dashboard ────────────────────────────────────────────────────────────
 
-      <div className="layout">
-        {/* ── Left panel ── */}
-        <div className="panel-left">
-          <div className="section-header">
-            <h3>Repositories</h3>
-            <span className="repo-count">{repos.length} added</span>
+  const tabs: { id: RightPanel; label: string; icon: string }[] = [
+    { id: "parse", label: "Structure", icon: "⚙" },
+    { id: "readme", label: "README", icon: "📄" },
+    ...(docstringsFile ? [{ id: "docstrings" as RightPanel, label: "Docstrings", icon: "💬" }] : []),
+    { id: "search", label: "Search", icon: "🔍" },
+    { id: "staleness", label: "Health", icon: "🩺" },
+  ];
+
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-[#16171d]">
+
+      {/* ── Topbar ── */}
+      <header className="h-14 flex items-center justify-between px-5 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500"
+          >
+            ☰
+          </button>
+          <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tracking-tight">AutoScribe</span>
+          <Badge className="bg-accent-light text-accent text-[10px]">Beta</Badge>
+        </div>
+        <div className="flex items-center gap-3">
+          <img src={user.avatar_url} alt="avatar" className="w-8 h-8 rounded-full border-2 border-gray-200 dark:border-gray-700" />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:block">{user.username}</span>
+          <button
+            onClick={handleLogout}
+            className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ── Sidebar ── */}
+        <aside className={`${sidebarOpen ? "w-80" : "w-0"} flex-shrink-0 transition-all duration-200 overflow-hidden border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col`}>
+          <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Repositories</h2>
+              <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-500">{repos.length}</Badge>
+            </div>
+            <form onSubmit={handleAddRepo} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="owner/repo"
+                value={repoInput}
+                onChange={(e) => setRepoInput(e.target.value)}
+                disabled={adding}
+                className="flex-1 min-w-0 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/50 transition"
+              />
+              <button
+                type="submit"
+                disabled={adding || !repoInput.trim()}
+                className="flex-shrink-0 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-purple-600 transition-colors"
+              >
+                {adding ? "…" : "Add"}
+              </button>
+            </form>
+            {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
           </div>
 
-          <form onSubmit={handleAddRepo} className="add-repo-form">
-            <input
-              type="text" className="repo-input"
-              placeholder="owner/repo or GitHub URL"
-              value={repoInput} onChange={(e) => setRepoInput(e.target.value)} disabled={adding}
-            />
-            <button type="submit" className="btn-primary" disabled={adding || !repoInput.trim()}>
-              {adding ? "Adding…" : "Add"}
-            </button>
-          </form>
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1">
+            {loading ? (
+              <Spinner label="Loading repos…" />
+            ) : repos.length === 0 ? (
+              <EmptyState icon="📁" title="No repos yet" sub="Add a GitHub repo above" />
+            ) : repos.map((repo) => (
+              <div
+                key={repo.id}
+                className={`rounded-xl border p-3 cursor-pointer transition-all group ${
+                  selectedRepo?.id === repo.id
+                    ? "border-accent bg-accent-light"
+                    : "border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+                onClick={() => setSelectedRepo(repo)}
+              >
+                <div className="flex items-start justify-between gap-2">
+  <a
+    href={repo.github_url}
+    target="_blank"
+    rel="noreferrer"
+    onClick={(e) => e.stopPropagation()}
+    className="text-sm font-semibold text-gray-800 dark:text-gray-200 hover:text-accent truncate"
+  >
+    {repo.full_name}
+  </a>
 
-          {error && <p className="error-msg">{error}</p>}
-
-          {loading ? <p className="muted">Loading…</p> : repos.length === 0 ? (
-            <div className="empty-state"><p className="muted">No repositories yet.</p></div>
-          ) : (
-            <ul className="repo-list">
-              {repos.map((repo) => (
-                <li key={repo.id} className={`repo-card ${selectedRepo?.id === repo.id ? "repo-card--active" : ""}`}>
-                  <div className="repo-card-header">
-                    <a href={repo.github_url} target="_blank" rel="noreferrer" className="repo-title">{repo.full_name}</a>
-                    <button className="btn-danger-sm" onClick={() => handleDeleteRepo(repo.id)}>✕</button>
-                  </div>
-                  {repo.description && <p className="repo-description">{repo.description}</p>}
-                  <div className="repo-meta">
-                    <span className="meta-pill">⎇ {repo.default_branch}</span>
-                    {repo.language && <span className="meta-pill">🔤 {repo.language}</span>}
-                    <span className="meta-pill">⭐ {repo.stars.toLocaleString()}</span>
-                    <span className="meta-pill muted">pushed {formatDate(repo.last_pushed_at)}</span>
-                  </div>
-                  <div className="repo-actions">
-                    <button className="btn-action" onClick={() => handleParseRepo(repo)} disabled={parsing && selectedRepo?.id === repo.id}>
-                      {parsing && selectedRepo?.id === repo.id ? "Parsing…" : "⚙ Parse"}
-                    </button>
-                    <button className="btn-action btn-action--ai" onClick={() => { setSelectedRepo(repo); handleGenerateReadme(); }}
-                      disabled={generatingReadme}>
-                      {generatingReadme && selectedRepo?.id === repo.id ? "Generating…" : "✨ README"}
-                    </button>
-                    <button className="btn-action btn-action--search" onClick={() => handleOpenSearch(repo)}>
-                      🔍 Search
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* ── Right panel ── */}
-        <div className="panel-right">
-
-          {selectedRepo && (
-            <div className="tab-bar">
-              <button className={`tab ${rightPanel === "parse" ? "tab--active" : ""}`} onClick={() => setRightPanel("parse")}>⚙ Structure</button>
-              <button className={`tab ${rightPanel === "readme" ? "tab--active" : ""}`} onClick={() => setRightPanel("readme")}>📄 README</button>
-              {docstringsFile && (
-                <button className={`tab ${rightPanel === "docstrings" ? "tab--active" : ""}`} onClick={() => setRightPanel("docstrings")}>💬 Docstrings</button>
-              )}
-              <button className={`tab ${rightPanel === "search" ? "tab--active" : ""}`} onClick={() => setRightPanel("search")}>🔍 Search</button>
-            </div>
-          )}
-
-          {rightPanel === "empty" && (
-            <div className="empty-state centered">
-              <p>Select a repo and click <strong>⚙ Parse</strong> to see its structure,<br />or <strong>✨ README</strong> to generate documentation.</p>
-            </div>
-          )}
-
-          {rightPanel === "parse" && (
-            parsing ? (
-              <div className="empty-state centered"><div className="spinner" /><p className="muted">Parsing {selectedRepo?.full_name}…</p></div>
-            ) : parseError ? (
-              <p className="error-msg">{parseError}</p>
-            ) : parseResults.length === 0 ? (
-              <div className="empty-state centered"><p className="muted">No parseable files found.</p></div>
-            ) : (
-              <>
-                <div className="parse-header">
-                  <h3>{selectedRepo?.full_name}</h3>
-                  <span className="repo-count">{parseResults.length} files · {parseResults.reduce((a, f) => a + f.symbols.length, 0)} symbols</span>
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      handleDeleteRepo(repo.id);
+    }}
+    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-xs flex-shrink-0"
+  >
+    ✕
+  </button>
+</div>
+                {repo.description && (
+                  <p className="text-xs text-gray-400 mt-1 line-clamp-2">{repo.description}</p>
+                )}
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {repo.language && (
+                    <Badge className={LANG_COLOR[repo.language.toLowerCase()] ?? "bg-gray-100 text-gray-500"}>
+                      {LANG_ICON[repo.language.toLowerCase()] ?? "🔤"} {repo.language}
+                    </Badge>
+                  )}
+                  <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-500">⭐ {repo.stars.toLocaleString()}</Badge>
                 </div>
-                <ul className="file-list">
+                {/* Action buttons */}
+                <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                  {[
+                    { label: "⚙ Parse", action: () => handleParseRepo(repo), loading: parsing && selectedRepo?.id === repo.id },
+                    { label: "✨ README", action: () => { setSelectedRepo(repo); handleGenerateReadme(); }, loading: generatingReadme && selectedRepo?.id === repo.id },
+                    { label: "🔍 Search", action: () => handleOpenSearch(repo), loading: false },
+                    { label: "🩺 Health", action: () => handleCheckStaleness(repo), loading: checkingStale && selectedRepo?.id === repo.id },
+                  ].map(({ label, action, loading: btnLoading }) => (
+                    <button
+                      key={label}
+                      onClick={(e) => { e.stopPropagation(); action(); }}
+                      disabled={btnLoading}
+                      className="text-[11px] font-medium px-2 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+                    >
+                      {btnLoading ? "…" : label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* ── Main area ── */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Stats strip */}
+          {repos.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <StatCard icon="📦" label="Repos" value={repos.length} />
+              <StatCard icon="⭐" label="Total Stars" value={totalStars.toLocaleString()} />
+              <StatCard icon="🔣" label="Symbols Parsed" value={totalSymbols} sub={selectedRepo?.full_name ?? "select a repo"} />
+              <StatCard icon="🌐" label="Languages" value={languages.length} sub={languages.slice(0, 3).join(", ")} />
+            </div>
+          )}
+
+          {/* Tab bar */}
+          {selectedRepo && (
+            <div className="flex items-center gap-1 px-4 pt-3 pb-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <div className="flex items-center gap-1 text-xs text-gray-400 mr-3 flex-shrink-0">
+                <span>📂</span>
+                <span className="font-medium text-gray-600 dark:text-gray-400">{selectedRepo.full_name}</span>
+              </div>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setRightPanel(tab.id)}
+                  className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
+                    rightPanel === tab.id
+                      ? "border-accent text-accent"
+                      : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                >
+                  {tab.icon} {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Panel content */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+
+            {/* Empty */}
+            {rightPanel === "empty" && (
+              <EmptyState
+                icon="🚀"
+                title="Select a repository to get started"
+                sub="Add a GitHub repo from the sidebar, then Parse it or generate a README."
+              />
+            )}
+
+            {/* ── Structure Panel ── */}
+            {rightPanel === "parse" && (
+              parsing ? <Spinner label={`Parsing ${selectedRepo?.full_name}…`} /> :
+              parseError ? <ErrorMsg msg={parseError} /> :
+              parseResults.length === 0 ? (
+                <EmptyState icon="📂" title="No parseable files found" sub="Try adding a repo with Python or TypeScript files." />
+              ) : (
+                <div className="max-w-3xl space-y-2">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Code Structure</h2>
+                    <div className="flex gap-2">
+                      <Badge className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">{parseResults.length} files</Badge>
+                      <Badge className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">{totalSymbols} symbols</Badge>
+                    </div>
+                  </div>
                   {parseResults.map((file) => (
-                    <li key={file.file_path} className="file-item">
-                      <div className="file-toggle-row">
-                        <button className="file-toggle" onClick={() => toggleFile(file.file_path)}>
-                          <span className="lang-icon">{LANG_ICON[file.language] ?? "📄"}</span>
-                          <span className="file-path">{file.file_path}</span>
-                          <span className="symbol-count">{file.symbols.length} symbols</span>
-                          <span className="chevron">{expandedFiles.has(file.file_path) ? "▾" : "▸"}</span>
+                    <div key={file.file_path} className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50">
+                        <button
+                          className="flex items-center gap-2 flex-1 text-left min-w-0"
+                          onClick={() => toggleFile(file.file_path)}
+                        >
+                          <span className="text-base">{LANG_ICON[file.language] ?? "📄"}</span>
+                          <span className="text-sm font-mono text-gray-700 dark:text-gray-300 truncate">{file.file_path}</span>
+                          <Badge className="bg-gray-200 dark:bg-gray-700 text-gray-500 ml-auto flex-shrink-0">{file.symbols.length}</Badge>
+                          <span className="text-gray-400 flex-shrink-0 ml-1">{expandedFiles.has(file.file_path) ? "▾" : "▸"}</span>
                         </button>
-                        <button className="btn-docstring" onClick={() => handleGenerateDocstrings(file)} title="Generate docstrings">
-                          ✨
+                        <button
+                          onClick={() => handleGenerateDocstrings(file)}
+                          className="ml-3 text-[11px] font-medium px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 hover:border-accent hover:text-accent transition-colors flex-shrink-0"
+                        >
+                          ✨ Docstrings
                         </button>
                       </div>
                       {expandedFiles.has(file.file_path) && (
-                        <ul className="symbol-list">
+                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
                           {file.symbols.map((sym, i) => (
-                            <li key={i} className="symbol-item">
-                              <span className={`symbol-icon symbol-icon--${sym.type}`}>{SYMBOL_ICON[sym.type] ?? "·"}</span>
-                              <span className="symbol-name">{sym.name}</span>
-                              <span className="symbol-line">:{sym.line}</span>
-                              {sym.docstring && <span className="symbol-doc">{sym.docstring.slice(0, 80)}{sym.docstring.length > 80 ? "…" : ""}</span>}
-                            </li>
+                            <div key={i} className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                              <span className={`font-mono text-sm font-bold flex-shrink-0 mt-0.5 ${SYMBOL_COLOR[sym.type] ?? "text-gray-400"}`}>
+                                {SYMBOL_ICON[sym.type] ?? "·"}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200 font-mono">{sym.name}</span>
+                                  <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-400 text-[10px]">{sym.type}</Badge>
+                                  <span className="text-xs text-gray-400 font-mono">:{sym.line}</span>
+                                </div>
+                                {sym.docstring && (
+                                  <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{sym.docstring}</p>
+                                )}
+                              </div>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       )}
-                    </li>
+                    </div>
                   ))}
-                </ul>
-              </>
-            )
-          )}
-
-          {rightPanel === "readme" && (
-            <div className="readme-panel">
-              <div className="readme-header">
-                <h3>Generated README</h3>
-                {readme && (
-                  <button className="btn-copy" onClick={() => handleCopy(readme)}>
-                    {copied ? "✓ Copied!" : "Copy Markdown"}
-                  </button>
-                )}
-              </div>
-              {generatingReadme ? (
-                <div className="empty-state centered"><div className="spinner" /><p className="muted">Generating README with AI…</p></div>
-              ) : readmeError ? (
-                <p className="error-msg">{readmeError}</p>
-              ) : readme ? (
-                <MarkdownRenderer content={readme} />
-              ) : (
-                <div className="empty-state centered">
-                  <p className="muted">Click <strong>✨ README</strong> on a repo to generate documentation.</p>
                 </div>
-              )}
-            </div>
-          )}
+              )
+            )}
 
-          {rightPanel === "docstrings" && (
-            <div className="docstrings-panel">
-              <div className="readme-header">
-                <h3>Docstrings — <span className="muted">{docstringsFile}</span></h3>
+            {/* ── README Panel ── */}
+            {rightPanel === "readme" && (
+              <div className="max-w-3xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Generated README</h2>
+                  {readme && (
+                    <button
+                      onClick={() => handleCopy(readme)}
+                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors"
+                    >
+                      {copied ? "✓ Copied!" : "Copy Markdown"}
+                    </button>
+                  )}
+                </div>
+                {generatingReadme ? <Spinner label="Generating README with AI…" /> :
+                 readmeError ? <ErrorMsg msg={readmeError} /> :
+                 readme ? (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+                    <MarkdownRenderer content={readme} />
+                  </div>
+                 ) : (
+                  <EmptyState icon="📄" title="No README yet" sub="Click ✨ README on a repo to generate documentation." />
+                 )}
               </div>
-              {generatingDocstrings ? (
-                <div className="empty-state centered"><div className="spinner" /><p className="muted">Generating docstrings with AI…</p></div>
-              ) : docstringsError ? (
-                <p className="error-msg">{docstringsError}</p>
-              ) : docstrings.length === 0 ? (
-                <div className="empty-state centered"><p className="muted">No docstrings generated.</p></div>
-              ) : (
-                <ul className="docstring-list">
-                  {docstrings.map((d, i) => (
-                    <li key={i} className="docstring-item">
-                      <div className="docstring-header">
-                        <span className={`symbol-icon symbol-icon--${d.type}`}>{SYMBOL_ICON[d.type] ?? "·"}</span>
-                        <span className="symbol-name">{d.name}</span>
-                        <span className="meta-pill">{d.type}</span>
-                        <button className="btn-copy-sm" onClick={() => handleCopy(d.docstring)}>Copy</button>
+            )}
+
+            {/* ── Docstrings Panel ── */}
+            {rightPanel === "docstrings" && (
+              <div className="max-w-3xl">
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Docstrings</h2>
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-gray-500">{docstringsFile}</code>
+                </div>
+                {generatingDocstrings ? <Spinner label="Generating docstrings with AI…" /> :
+                 docstringsError ? <ErrorMsg msg={docstringsError} /> :
+                 docstrings.length === 0 ? <EmptyState icon="💬" title="No docstrings generated yet" /> : (
+                  <div className="space-y-3">
+                    {docstrings.map((d, i) => (
+                      <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`font-mono text-sm font-bold ${SYMBOL_COLOR[d.type] ?? "text-gray-400"}`}>{SYMBOL_ICON[d.type] ?? "·"}</span>
+                          <span className="text-sm font-semibold font-mono text-gray-800 dark:text-gray-200">{d.name}</span>
+                          <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-400">{d.type}</Badge>
+                          <button
+                            onClick={() => handleCopy(d.docstring)}
+                            className="ml-auto text-xs text-gray-400 hover:text-accent transition-colors"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{d.docstring}</p>
                       </div>
-                      <p className="docstring-text">{d.docstring}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* ── Search + RAG Panel ── */}
-          {rightPanel === "search" && (
-            <div className="search-panel">
-              <div className="search-panel-header">
-                <h3>🔍 Semantic Search + RAG</h3>
-                <span className="muted" style={{ fontSize: 13 }}>{selectedRepo?.full_name}</span>
-              </div>
-
-              {/* Index status bar */}
-              <div className="index-bar">
-                {indexStats?.indexed ? (
-                  <span className="index-badge index-badge--ok">
-                    ✅ Indexed — {indexStats.symbol_count} symbols
-                  </span>
-                ) : (
-                  <span className="index-badge index-badge--warn">
-                    ⚠ Not indexed yet
-                  </span>
+                    ))}
+                  </div>
                 )}
-                <button
-                  className="btn-action btn-action--ai"
-                  onClick={handleIndexRepo}
-                  disabled={indexing}
-                  style={{ marginLeft: "auto" }}
-                >
-                  {indexing ? "Indexing…" : "⚡ Index Repo"}
-                </button>
               </div>
-              {indexError && <p className="error-msg">{indexError}</p>}
+            )}
 
-              {/* Mode toggle */}
-              <div className="search-mode-toggle">
-                <button
-                  className={`mode-btn ${searchMode === "search" ? "mode-btn--active" : ""}`}
-                  onClick={() => setSearchMode("search")}
-                >
-                  🔎 Semantic Search
-                </button>
-                <button
-                  className={`mode-btn ${searchMode === "ask" ? "mode-btn--active" : ""}`}
-                  onClick={() => setSearchMode("ask")}
-                >
-                  🤖 Ask AI (RAG)
-                </button>
-              </div>
-
-              {/* Semantic Search */}
-              {searchMode === "search" && (
-                <div className="search-section">
-                  <form onSubmit={handleSearch} className="search-form">
-                    <input
-                      className="repo-input"
-                      placeholder="e.g. function that handles authentication"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      disabled={searching}
-                    />
-                    <button type="submit" className="btn-primary" disabled={searching || !searchQuery.trim()}>
-                      {searching ? "…" : "Search"}
+            {/* ── Search Panel ── */}
+            {rightPanel === "search" && (
+              <div className="max-w-3xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Semantic Search + RAG</h2>
+                  <div className="flex items-center gap-2">
+                    {indexStats?.indexed ? (
+                      <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                        ✅ Indexed · {indexStats.symbol_count} symbols
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+                        ⚠ Not indexed
+                      </Badge>
+                    )}
+                    <button
+                      onClick={handleIndexRepo}
+                      disabled={indexing}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-purple-600 disabled:opacity-50 transition-colors"
+                    >
+                      {indexing ? "Indexing…" : "⚡ Index"}
                     </button>
-                  </form>
-
-                  {searchError && <p className="error-msg">{searchError}</p>}
-
-                  {searching && (
-                    <div className="empty-state centered"><div className="spinner" /><p className="muted">Searching…</p></div>
-                  )}
-
-                  {searchResults.length > 0 && (
-                    <ul className="search-results">
-                      {searchResults.map((r, i) => (
-                        <li key={i} className="search-result-item">
-                          <div className="search-result-header">
-                            <span className={`symbol-icon symbol-icon--${r.type}`}>{SYMBOL_ICON[r.type] ?? "·"}</span>
-                            <span className="symbol-name">{r.name}</span>
-                            <span className="meta-pill">{r.type}</span>
-                            <span className="score-badge">{(r.score * 100).toFixed(0)}% match</span>
-                          </div>
-                          <div className="search-result-meta">
-                            <span className="file-path-sm">{r.file_path}:{r.line}</span>
-                            <span className="lang-icon">{LANG_ICON[r.language] ?? "📄"}</span>
-                          </div>
-                          {r.docstring && (
-                            <p className="search-result-doc">{r.docstring.slice(0, 150)}{r.docstring.length > 150 ? "…" : ""}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {!searching && searchResults.length === 0 && searchQuery && (
-                    <p className="muted" style={{ marginTop: 16 }}>No results. Make sure the repo is indexed first.</p>
-                  )}
+                  </div>
                 </div>
-              )}
 
-              {/* RAG Q&A */}
-              {searchMode === "ask" && (
-                <div className="search-section">
-                  <form onSubmit={handleAsk} className="search-form">
-                    <input
-                      className="repo-input"
-                      placeholder="e.g. What does the parse_repo function do?"
-                      value={ragQuestion}
-                      onChange={(e) => setRagQuestion(e.target.value)}
-                      disabled={ragAsking}
-                    />
-                    <button type="submit" className="btn-primary" disabled={ragAsking || !ragQuestion.trim()}>
-                      {ragAsking ? "…" : "Ask"}
+                {indexError && <ErrorMsg msg={indexError} />}
+
+                {/* Mode toggle */}
+                <div className="flex gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 mb-4 w-fit">
+                  {(["search", "ask"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setSearchMode(mode)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        searchMode === mode
+                          ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                      }`}
+                    >
+                      {mode === "search" ? "🔎 Search" : "🤖 Ask AI"}
                     </button>
-                  </form>
+                  ))}
+                </div>
 
-                  {ragError && <p className="error-msg">{ragError}</p>}
-
-                  {ragAsking && (
-                    <div className="empty-state centered"><div className="spinner" /><p className="muted">Thinking…</p></div>
-                  )}
-
-                  {ragAnswer && (
-                    <div className="rag-answer-block">
-                      <div className="rag-answer-label">🤖 Answer</div>
-                      <p className="rag-answer-text">{ragAnswer}</p>
-                    </div>
-                  )}
-
-                  {ragSources.length > 0 && (
-                    <div className="rag-sources">
-                      <div className="rag-sources-label">📎 Sources used ({ragSources.length})</div>
-                      <ul className="search-results">
-                        {ragSources.map((r, i) => (
-                          <li key={i} className="search-result-item search-result-item--sm">
-                            <div className="search-result-header">
-                              <span className={`symbol-icon symbol-icon--${r.type}`}>{SYMBOL_ICON[r.type] ?? "·"}</span>
-                              <span className="symbol-name">{r.name}</span>
-                              <span className="meta-pill">{r.type}</span>
-                              <span className="score-badge">{(r.score * 100).toFixed(0)}%</span>
+                {searchMode === "search" && (
+                  <>
+                    <form onSubmit={handleSearch} className="flex gap-2 mb-4">
+                      <input
+                        className="flex-1 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/50 transition"
+                        placeholder="e.g. function that handles authentication"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        disabled={searching}
+                      />
+                      <button
+                        type="submit"
+                        disabled={searching || !searchQuery.trim()}
+                        className="px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium disabled:opacity-50 hover:bg-purple-600 transition-colors"
+                      >
+                        {searching ? "…" : "Search"}
+                      </button>
+                    </form>
+                    {searchError && <ErrorMsg msg={searchError} />}
+                    {searching && <Spinner label="Searching…" />}
+                    {searchResults.length > 0 && (
+                      <div className="space-y-2">
+                        {searchResults.map((r, i) => (
+                          <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`font-mono text-sm font-bold ${SYMBOL_COLOR[r.type] ?? "text-gray-400"}`}>{SYMBOL_ICON[r.type] ?? "·"}</span>
+                              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{r.name}</span>
+                              <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-400">{r.type}</Badge>
+                              <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ml-auto">
+                                {(r.score * 100).toFixed(0)}% match
+                              </Badge>
                             </div>
-                            <div className="search-result-meta">
-                              <span className="file-path-sm">{r.file_path}:{r.line}</span>
-                            </div>
-                          </li>
+                            <p className="text-xs font-mono text-gray-400 mb-2">{r.file_path}:{r.line}</p>
+                            {r.docstring && <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{r.docstring}</p>}
+                          </div>
                         ))}
-                      </ul>
-                    </div>
-                  )}
+                      </div>
+                    )}
+                    {!searching && searchResults.length === 0 && searchQuery && (
+                      <p className="text-sm text-gray-400 text-center mt-8">No results. Make sure the repo is indexed first.</p>
+                    )}
+                  </>
+                )}
+
+                {searchMode === "ask" && (
+                  <>
+                    <form onSubmit={handleAsk} className="flex gap-2 mb-4">
+                      <input
+                        className="flex-1 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/50 transition"
+                        placeholder="e.g. What does the parse_repo function do?"
+                        value={ragQuestion}
+                        onChange={(e) => setRagQuestion(e.target.value)}
+                        disabled={ragAsking}
+                      />
+                      <button
+                        type="submit"
+                        disabled={ragAsking || !ragQuestion.trim()}
+                        className="px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium disabled:opacity-50 hover:bg-purple-600 transition-colors"
+                      >
+                        {ragAsking ? "…" : "Ask"}
+                      </button>
+                    </form>
+                    {ragError && <ErrorMsg msg={ragError} />}
+                    {ragAsking && <Spinner label="Thinking…" />}
+                    {ragAnswer && (
+                      <div className="rounded-xl border border-accent-border bg-accent-light p-5 mb-4">
+                        <p className="text-xs font-semibold text-accent mb-2">🤖 Answer</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{ragAnswer}</p>
+                      </div>
+                    )}
+                    {ragSources.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 mb-2">📎 Sources ({ragSources.length})</p>
+                        <div className="space-y-1.5">
+                          {ragSources.map((r, i) => (
+                            <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2">
+                              <span className={`font-mono text-xs font-bold ${SYMBOL_COLOR[r.type] ?? "text-gray-400"}`}>{SYMBOL_ICON[r.type] ?? "·"}</span>
+                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{r.name}</span>
+                              <span className="text-xs text-gray-400 font-mono">{r.file_path}:{r.line}</span>
+                              <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-400 ml-auto">{(r.score * 100).toFixed(0)}%</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Health / Staleness Panel ── */}
+            {rightPanel === "staleness" && (
+              <div className="max-w-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Documentation Health</h2>
+                  <span className="text-xs text-gray-400">{selectedRepo?.full_name}</span>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+                {checkingStale ? <Spinner label="Checking staleness…" /> :
+                 stalenessError ? <ErrorMsg msg={stalenessError} /> :
+                 !stalenessReport ? (
+                  <EmptyState icon="🩺" title="Click 🩺 Health on a repo to check" />
+                 ) : (
+                  <div className="space-y-4">
+                    {/* Summary card */}
+                    <div className={`rounded-2xl border p-5 ${stalenessReport.is_stale ? "border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20" : "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20"}`}>
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">{stalenessReport.is_stale ? "⚠️" : "✅"}</span>
+                        <div>
+                          <p className={`text-base font-bold ${stalenessReport.is_stale ? "text-yellow-800 dark:text-yellow-300" : "text-green-800 dark:text-green-300"}`}>
+                            {stalenessReport.is_stale ? "Documentation is stale" : "Documentation is up to date"}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {stalenessReport.stale_count} of {stalenessReport.total_files} files need updating
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stale files */}
+                    {stalenessReport.stale_files.length > 0 && (
+                      <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
+                          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Stale Files</p>
+                          <Badge className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700">{stalenessReport.stale_files.length}</Badge>
+                        </div>
+                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {stalenessReport.stale_files.map((f, i) => (
+                            <div key={i} className="px-4 py-2.5 flex items-center gap-2">
+                              <span className="text-yellow-500 text-xs">●</span>
+                              <code className="text-xs text-gray-600 dark:text-gray-400">{f}</code>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Update buttons */}
+                    {stalenessReport.is_stale && (
+                      <div className="flex flex-wrap gap-2">
+                        {(["docstrings", "readme", "all"] as const).map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => handleIncrementalUpdate(type)}
+                            disabled={updatingDocs}
+                            className="text-sm font-medium px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent disabled:opacity-50 transition-colors"
+                          >
+                            {updatingDocs ? "Updating…" : `Update ${type}`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+        </main>
       </div>
     </div>
   );
