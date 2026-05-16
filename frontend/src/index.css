@@ -38,6 +38,7 @@
 body {
   margin: 0;
   background: var(--surface);
+  background: radial-gradient(circle at top, #0f172a, #020617);
   color: var(--text-1);
   font-family: 'DM Sans', system-ui, sans-serif;
   font-synthesis: none;
