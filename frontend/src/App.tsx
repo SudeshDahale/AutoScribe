@@ -11,18 +11,57 @@ import type {
 
 import { LoginPage } from "./components/LoginPage";
 import { Topbar } from "./components/TopBar";
-import { Sidebar } from "./components/Sidebar";
-import { StatsStrip } from "./components/StatsStrip";
-import { TabBar } from "./components/TabBar";
-import { ParsePanel } from "./components/panels/ParsePanel";
-import { ReadmePanel } from "./components/panels/ReadmePanel";
-import { DocstringsPanel } from "./components/panels/DocstringsPanel";
 import { SearchPanel } from "./components/panels/SearchPanel";
-import { AnalyticsPanel } from "./components/panels/AnalyticsPanel";
-import { StalenessPanel } from "./components/panels/StalenessPanel";
-import { WebhookPanel } from "./components/panels/WebhookPanel";
 import { PromptEditorModal } from "./components/PromptEditorModal";
-import { EmptyState } from "./components/ui/EmptyState";
+import { RepositoriesPage } from "./pages/RepositoriesPage";
+
+// ── Page stubs for Search and Prompts ────────────────────────────────────────
+
+function SearchPage(props: any) {
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 32px' }}>
+      <p style={{
+        fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)',
+        letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8,
+      }}>
+        Semantic Search
+      </p>
+      <h1 style={{ fontSize: 48, fontFamily: 'Syne, sans-serif', fontWeight: 700, margin: '0 0 12px', lineHeight: 1.1 }}>
+        Ask anything.{' '}
+        <em style={{ color: 'var(--lime)', fontStyle: 'italic' }}>Get cited answers.</em>
+      </h1>
+      <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 40 }}>
+        AutoScribe indexes your code and documentation in the same vector space,
+        then answers in plain English with file-and-line citations.
+      </p>
+      <SearchPanel {...props} />
+    </div>
+  );
+}
+
+function PromptsPage(props: any) {
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 32px' }}>
+      <p style={{
+        fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)',
+        letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8,
+      }}>
+        Prompts
+      </p>
+      <h1 style={{ fontSize: 48, fontFamily: 'Syne, sans-serif', fontWeight: 700, margin: '0 0 12px', lineHeight: 1.1 }}>
+        Make the model{' '}
+        <em style={{ color: 'var(--lime)', fontStyle: 'italic' }}>sound like your team.</em>
+      </h1>
+      <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 40 }}>
+        Prompts are versioned per project. Edit, preview against a real symbol from your
+        codebase, and ship — no deploy required.
+      </p>
+      <PromptEditorModal open={true} onClose={() => {}} {...props} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,7 +70,6 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [healthScores, setHealthScores] = useState<Record<number, RepoHealth>>({});
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -73,7 +111,6 @@ function App() {
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [webhookSaved, setWebhookSaved] = useState<null | { webhook_url: string; instructions: Record<string, string> }>(null);
   const [webhookError, setWebhookError] = useState("");
-  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplate | null>(null);
   const [activePrompt, setActivePrompt] = useState("");
@@ -90,6 +127,7 @@ function App() {
   const [createPR, setCreatePR] = useState(false);
   const [promptTab, setPromptTab] = useState<"editor" | "preview" | "history">("editor");
   const [validating, setValidating] = useState(false);
+  const [activePage, setActivePage] = useState<'repositories' | 'search' | 'prompts'>('repositories');
 
   // Auth
   useEffect(() => {
@@ -430,10 +468,10 @@ function App() {
 
   function handleOpenPromptEditor(repo?: Repo) {
     if (repo) setSelectedRepo(repo);
-    setPromptEditorOpen(true);
     setPromptTab("editor");
     if (promptTemplates.length === 0) loadPromptTemplates();
     if (selectedRepo || repo) loadEditHistory();
+    setActivePage('prompts');
   }
 
   function toggleFile(path: string) {
@@ -452,237 +490,161 @@ function App() {
     setUser(null); setRepos([]); setSelectedRepo(null); setParseResults([]); setRightPanel("empty");
   };
 
-  const totalSymbols = parseResults.reduce((a, f) => a + f.symbols.length, 0);
-  const avgCoverage = Object.values(healthScores)
-    .filter(h => h.coverage_pct !== null)
-    .reduce((a, h, _, arr) => a + (h.coverage_pct ?? 0) / arr.length, 0);
-
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
-  return (
-    <div className="flex flex-col min-h-screen bg-[#f8f7ff] dark:bg-[#0f0f14]">
-      <Topbar
-        user={user}
-        sidebarOpen={sidebarOpen}
-        selectedRepo={selectedRepo}
-        onToggleSidebar={() => setSidebarOpen(v => !v)}
-        onOpenPromptEditor={() => handleOpenPromptEditor()}
-        onLogout={handleLogout}
-      />
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className={`${sidebarOpen ? "w-80" : "w-0"} flex-shrink-0 transition-all duration-200 overflow-hidden`}>
-          <div className="w-80 h-full flex flex-col">
-            <Sidebar
-              repos={repos}
-              selectedRepo={selectedRepo}
-              healthScores={healthScores}
-              loading={loading}
-              error={error}
-              repoInput={repoInput}
-              adding={adding}
-              parsing={parsing}
-              generatingReadme={generatingReadme}
-              loadingAnalytics={loadingAnalytics}
-              onRepoInputChange={setRepoInput}
-              onAddRepo={handleAddRepo}
-              onSelectRepo={setSelectedRepo}
-              onDeleteRepo={handleDeleteRepo}
-              onParseRepo={handleParseRepo}
-              onGenerateReadme={handleGenerateReadme}
-              onOpenSearch={handleOpenSearch}
-              onOpenAnalytics={handleOpenAnalytics}
-              onOpenWebhook={handleOpenWebhook}
-              onOpenPromptEditor={handleOpenPromptEditor}
-            />
-          </div>
-        </div>
-
-        {/* Main */}
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-          {repos.length > 0 && (
-            <StatsStrip
-              repos={repos}
-              totalSymbols={totalSymbols}
-              avgCoverage={avgCoverage}
-              hasHealthData={Object.keys(healthScores).length > 0}
-              selectedRepo={selectedRepo}
-            />
-          )}
-
-          {selectedRepo && (
-            <TabBar
-              selectedRepo={selectedRepo}
-              rightPanel={rightPanel}
-              hasDocstrings={!!docstringsFile}
-              onSelect={setRightPanel}
-            />
-          )}
-
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
-            {rightPanel === "empty" && (
-              <EmptyState
-                icon="🚀"
-                title="Select a repository to get started"
-                sub="Add a GitHub repo from the sidebar, then Parse, generate docs, or check Analytics."
-              />
-            )}
-
-            {rightPanel === "parse" && (
-              <ParsePanel
-                parsing={parsing}
-                parseError={parseError}
-                parseResults={parseResults}
-                expandedFiles={expandedFiles}
-                onToggleFile={toggleFile}
-                onGenerateDocstrings={handleGenerateDocstrings}
-                repoName={selectedRepo?.full_name}
-              />
-            )}
-
-            {rightPanel === "readme" && (
-  <ReadmePanel
-    generating={generatingReadme}
-    error={readmeError}
-    readme={readme}
-    copied={copied}
-    onCopy={handleCopy}
-    repoId={selectedRepo?.id ?? null}
-    token={user?.access_token ?? ""}
-    onRegenerate={async (referenceText?: string) => {
+  // Shared props passed to all panels via RepositoriesPage / page stubs
+  const sharedPanelProps = {
+    // parse
+    parsing, parseError, parseResults, expandedFiles,
+    onToggleFile: toggleFile, onGenerateDocstrings: handleGenerateDocstrings,
+    // readme
+    generating: generatingReadme, error: readmeError, readme, copied,
+    onCopy: handleCopy, onRegenerate: async (referenceText?: string) => {
       if (!user || !selectedRepo) return;
-      setGeneratingReadme(true);
-      setReadmeError("");
+      setGeneratingReadme(true); setReadmeError('');
       try {
         if (referenceText) {
           const res = await fetch(`${API}/prompt-editor/generate-with-reference`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
-            body: JSON.stringify({
-              repo_id: selectedRepo.id,
-              doc_type: "readme",
-              reference_text: referenceText,
-            }),
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.access_token}` },
+            body: JSON.stringify({ repo_id: selectedRepo.id, doc_type: 'readme', reference_text: referenceText }),
           });
-          if (!res.ok) { setReadmeError("Failed to generate README with reference."); return; }
-          const data = await res.json();
-          setReadme(data.content);
-        } else {
-          await handleGenerateReadme();
-        }
-      } catch { setReadmeError("Network error generating README."); }
+          if (!res.ok) { setReadmeError('Failed to generate README with reference.'); return; }
+          setReadme((await res.json()).content);
+        } else { await handleGenerateReadme(); }
+      } catch { setReadmeError('Network error generating README.'); }
       finally { setGeneratingReadme(false); }
-    }}
-  />
-)}
+    },
+    // docstrings
+    generating_docstrings: generatingDocstrings,
+    docstringsError, docstrings, filePath: docstringsFile,
+    // search
+    indexStats, indexing, indexError,
+    searchMode, searchQuery, searching, searchResults, searchError,
+    ragQuestion, ragAsking, ragAnswer, ragSources, ragError,
+    onIndexRepo: handleIndexRepo,
+    onSearchModeChange: setSearchMode,
+    onSearchQueryChange: setSearchQuery,
+    onSearch: handleSearch,
+    onRagQuestionChange: setRagQuestion,
+    onAsk: handleAsk,
+    // analytics
+    loading: loadingAnalytics, analyticsError, analytics,
+    // staleness
+    checking: checkingStale, stalenessError, report: stalenessReport,
+    updating: updatingDocs, onUpdate: handleIncrementalUpdate,
+    // webhook
+    webhookStatus, webhookSecret, webhookAutoRegen,
+    saving: savingWebhook, saved: webhookSaved, webhookError,
+    onSecretChange: setWebhookSecret,
+    onAutoRegenToggle: () => setWebhookAutoRegen(v => !v),
+    onSave: handleSaveWebhook,
+  };
 
-            {rightPanel === "docstrings" && (
-              <DocstringsPanel
-                generating={generatingDocstrings}
-                error={docstringsError}
-                docstrings={docstrings}
-                filePath={docstringsFile}
-                onCopy={handleCopy}
-              />
-            )}
-
-            {rightPanel === "search" && (
-              <SearchPanel
-                indexStats={indexStats}
-                indexing={indexing}
-                indexError={indexError}
-                searchMode={searchMode}
-                searchQuery={searchQuery}
-                searching={searching}
-                searchResults={searchResults}
-                searchError={searchError}
-                ragQuestion={ragQuestion}
-                ragAsking={ragAsking}
-                ragAnswer={ragAnswer}
-                ragSources={ragSources}
-                ragError={ragError}
-                onIndexRepo={handleIndexRepo}
-                onSearchModeChange={setSearchMode}
-                onSearchQueryChange={setSearchQuery}
-                onSearch={handleSearch}
-                onRagQuestionChange={setRagQuestion}
-                onAsk={handleAsk}
-              />
-            )}
-
-            {rightPanel === "analytics" && (
-              <AnalyticsPanel
-                loading={loadingAnalytics}
-                error={analyticsError}
-                analytics={analytics}
-                onViewStaleness={handleOpenStaleness}
-                selectedRepo={selectedRepo}
-              />
-            )}
-
-            {rightPanel === "staleness" && (
-              <StalenessPanel
-                checking={checkingStale}
-                error={stalenessError}
-                report={stalenessReport}
-                updating={updatingDocs}
-                repoName={selectedRepo?.full_name}
-                onUpdate={handleIncrementalUpdate}
-              />
-            )}
-
-            {rightPanel === "webhook" && (
-              <WebhookPanel
-                webhookStatus={webhookStatus}
-                webhookSecret={webhookSecret}
-                webhookAutoRegen={webhookAutoRegen}
-                saving={savingWebhook}
-                saved={webhookSaved}
-                error={webhookError}
-                copied={copied}
-                onSecretChange={setWebhookSecret}
-                onAutoRegenToggle={() => setWebhookAutoRegen(v => !v)}
-                onSave={handleSaveWebhook}
-                onCopy={handleCopy}
-              />
-            )}
-          </div>
-        </main>
-      </div>
-
-      <PromptEditorModal
-        open={promptEditorOpen}
-        selectedRepo={selectedRepo}
-        promptTemplates={promptTemplates}
-        selectedTemplate={selectedTemplate}
-        activePrompt={activePrompt}
-        activeDocType={activeDocType}
-        promptValidation={promptValidation}
-        previewContent={previewContent}
-        previewing={previewing}
-        previewError={previewError}
-        generatingWithPrompt={generatingWithPrompt}
-        promptGenError={promptGenError}
-        promptGenSuccess={promptGenSuccess}
-        editHistory={editHistory}
-        loadingHistory={loadingHistory}
-        createPR={createPR}
-        promptTab={promptTab}
-        validating={validating}
-        copied={copied}
-        onClose={() => setPromptEditorOpen(false)}
-        onSelectTemplate={handleSelectTemplate}
-        onPromptChange={v => { setActivePrompt(v); setPromptValidation(null); setPromptGenSuccess(""); }}
-        onDocTypeChange={v => { setActiveDocType(v); setPromptValidation(null); }}
-        onValidate={handleValidatePrompt}
-        onPreview={handlePreviewPrompt}
-        onGenerate={handleGenerateWithPrompt}
-        onTabChange={t => { setPromptTab(t); if (t === "history") loadEditHistory(); }}
-        onCreatePRToggle={() => setCreatePR(v => !v)}
-        onRestorePrompt={p => { setActivePrompt(p); setPromptTab("editor"); }}
-        onCopy={handleCopy}
+  return (
+    <div className="flex flex-col min-h-screen" style={{ background: 'var(--surface)' }}>
+      <Topbar
+        user={user}
+        activePage={activePage}
+        onNavigate={(page: 'repositories' | 'search' | 'prompts') => {
+          setActivePage(page);
+          if (page === 'search' && selectedRepo) handleOpenSearch(selectedRepo);
+          if (page === 'prompts') {
+            if (promptTemplates.length === 0) loadPromptTemplates();
+            if (selectedRepo) loadEditHistory();
+          }
+        }}
+        onLogout={handleLogout}
       />
+
+      <main className="flex-1 overflow-y-auto scrollbar-thin">
+        {activePage === 'repositories' && (
+          <RepositoriesPage
+            user={user}
+            repos={repos}
+            healthScores={healthScores}
+            loading={loading}
+            error={error}
+            repoInput={repoInput}
+            adding={adding}
+            parsing={parsing}
+            generatingReadme={generatingReadme}
+            loadingAnalytics={loadingAnalytics}
+            selectedRepo={selectedRepo}
+            rightPanel={rightPanel}
+            onRepoInputChange={setRepoInput}
+            onAddRepo={handleAddRepo}
+            onSelectRepo={setSelectedRepo}
+            onDeleteRepo={handleDeleteRepo}
+            onParseRepo={handleParseRepo}
+            onGenerateReadme={handleGenerateReadme}
+            onOpenSearch={handleOpenSearch}
+            onOpenAnalytics={handleOpenAnalytics}
+            onOpenWebhook={handleOpenWebhook}
+            onOpenPromptEditor={handleOpenPromptEditor}
+            onOpenStaleness={handleOpenStaleness}
+            onSetRightPanel={setRightPanel}
+            {...sharedPanelProps}
+          />
+        )}
+
+        {activePage === 'search' && (
+          <SearchPage
+            indexStats={indexStats}
+            indexing={indexing}
+            indexError={indexError}
+            searchMode={searchMode}
+            searchQuery={searchQuery}
+            searching={searching}
+            searchResults={searchResults}
+            searchError={searchError}
+            ragQuestion={ragQuestion}
+            ragAsking={ragAsking}
+            ragAnswer={ragAnswer}
+            ragSources={ragSources}
+            ragError={ragError}
+            onIndexRepo={handleIndexRepo}
+            onSearchModeChange={setSearchMode}
+            onSearchQueryChange={setSearchQuery}
+            onSearch={handleSearch}
+            onRagQuestionChange={setRagQuestion}
+            onAsk={handleAsk}
+          />
+        )}
+
+        {activePage === 'prompts' && (
+          <PromptsPage
+            selectedRepo={selectedRepo}
+            promptTemplates={promptTemplates}
+            selectedTemplate={selectedTemplate}
+            activePrompt={activePrompt}
+            activeDocType={activeDocType}
+            promptValidation={promptValidation}
+            previewContent={previewContent}
+            previewing={previewing}
+            previewError={previewError}
+            generatingWithPrompt={generatingWithPrompt}
+            promptGenError={promptGenError}
+            promptGenSuccess={promptGenSuccess}
+            editHistory={editHistory}
+            loadingHistory={loadingHistory}
+            createPR={createPR}
+            promptTab={promptTab}
+            validating={validating}
+            copied={copied}
+            onSelectTemplate={handleSelectTemplate}
+            onPromptChange={(v: string) => { setActivePrompt(v); setPromptValidation(null); setPromptGenSuccess(''); }}
+            onDocTypeChange={(v: string) => { setActiveDocType(v); setPromptValidation(null); }}
+            onValidate={handleValidatePrompt}
+            onPreview={handlePreviewPrompt}
+            onGenerate={handleGenerateWithPrompt}
+            onTabChange={(t: "editor" | "preview" | "history") => { setPromptTab(t); if (t === 'history') loadEditHistory(); }}
+            onCreatePRToggle={() => setCreatePR(v => !v)}
+            onRestorePrompt={(p: string) => { setActivePrompt(p); setPromptTab('editor'); }}
+            onCopy={handleCopy}
+          />
+        )}
+      </main>
     </div>
   );
 }
