@@ -49,54 +49,55 @@ export function PromptEditorModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-white dark:bg-[#17171f] border border-gray-200 dark:border-white/[0.08] shadow-glow-lg overflow-hidden">
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 1100, maxHeight: '94vh', display: 'flex', flexDirection: 'column', borderRadius: 20, background: 'var(--surface-2)', border: '1px solid var(--border)', boxShadow: '0 32px 80px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/[0.06]">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div>
-            <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">✏️ Prompt-Based Editor</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Customize AI prompts to generate any documentation type</p>
+            <h2 style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: 'var(--text-1)', margin: 0 }}>Prompt Editor</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '3px 0 0' }}>Customize AI prompts to generate any documentation type</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {selectedRepo && (
-              <Badge className="bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-semibold">
-                📂 {selectedRepo.full_name}
-              </Badge>
+              <span className="pill-lime">📂 {selectedRepo.full_name}</span>
             )}
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+              style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-3)', cursor: 'pointer', color: 'var(--text-2)', fontSize: 13 }}
             >
               ✕
             </button>
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* Template sidebar */}
-          <div className="w-56 flex-shrink-0 border-r border-gray-100 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02] overflow-y-auto scrollbar-thin">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.06]">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Templates</p>
+          <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid var(--border)', background: 'var(--surface)', overflowY: 'auto' }} className="scrollbar-thin">
+            <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border)' }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Templates</p>
             </div>
             {["documentation", "engineering", "code"].map((cat) => {
               const items = promptTemplates.filter(t => t.category === cat);
               if (items.length === 0) return null;
               return (
                 <div key={cat}>
-                  <p className="px-4 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cat}</p>
+                  <p style={{ padding: '12px 16px 4px', fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>{cat}</p>
                   {items.map(tpl => (
                     <button
                       key={tpl.id}
                       onClick={() => onSelectTemplate(tpl)}
-                      className={`w-full text-left px-4 py-2.5 transition-colors ${
-                        selectedTemplate?.id === tpl.id
-                          ? "bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300"
-                          : "hover:bg-white dark:hover:bg-white/[0.04] text-gray-700 dark:text-gray-300"
-                      }`}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '10px 16px',
+                        background: selectedTemplate?.id === tpl.id ? 'var(--lime-dim)' : 'transparent',
+                        border: 'none',
+                        borderLeft: selectedTemplate?.id === tpl.id ? '2px solid var(--lime)' : '2px solid transparent',
+                        cursor: 'pointer', transition: 'all 0.12s',
+                        color: selectedTemplate?.id === tpl.id ? 'var(--lime)' : 'var(--text-2)',
+                      }}
                     >
-                      <p className="text-xs font-semibold">{tpl.name}</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2">{tpl.description}</p>
+                      <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 2px', color: 'inherit' }}>{tpl.name}</p>
+                      <p style={{ fontSize: 11, color: 'var(--text-3)', margin: 0, lineHeight: 1.4 }}>{tpl.description}</p>
                     </button>
                   ))}
                 </div>
