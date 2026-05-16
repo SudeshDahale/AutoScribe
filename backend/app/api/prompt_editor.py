@@ -154,6 +154,21 @@ class CreatePRRequest(BaseModel):
     content: str
     branch_name: Optional[str] = None
     pr_title: Optional[str] = None
+    
+class StyleReferenceRequest(BaseModel):
+    """Attach a reference doc so the LLM mirrors its structure and tone."""
+    repo_id: int
+    doc_type: str                     # "readme" | "architecture" | "api_docs" | etc.
+    reference_text: str               # the raw content of the reference doc
+    label: Optional[str] = None       # e.g. "Stripe README style"
+
+class GenerateWithReferenceRequest(BaseModel):
+    repo_id: int
+    doc_type: str
+    reference_text: str               # pasted/uploaded reference content
+    file_path: Optional[str] = None
+    create_pr: bool = False
+    custom_instructions: Optional[str] = None  # extra freeform notes on top
 
 # ── Auth helper ────────────────────────────────────────────────────────────────
 
@@ -400,6 +415,226 @@ async def generate_and_save(
         "content": content,
         "doc_type": doc_type_key,
         "saved": True,
+        "pr": pr_result,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+@router.post("/save-style-reference")
+async def save_style_reference(
+    body: StyleReferenceRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Persist a style reference for a (repo, doc_type) pair.
+    Every subsequent generation for that doc_type will mirror the reference's
+    structure, headings, tone, and formatting.
+    """
+    result = await db.execute(
+        select(Repository).where(
+            Repository.id == body.repo_id,
+            Repository.user_id == current_user.id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    if len(body.reference_text.strip()) < 50:
+        raise HTTPException(
+            status_code=422,
+            detail="Reference text too short — paste at least 50 characters of an example doc.",
+        )
+    if len(body.reference_text) > 20_000:
+        raise HTTPException(
+            status_code=422,
+            detail="Reference text too long (max 20,000 characters). Trim it down.",
+        )
+
+    key = f"style_reference:{body.doc_type}"
+    payload = json.dumps({
+        "label": body.label or f"Custom {body.doc_type} style",
+        "reference_text": body.reference_text,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    existing = await db.execute(
+        select(Documentation).where(
+            Documentation.repo_id == body.repo_id,
+            Documentation.doc_type == key,
+        )
+    )
+    doc = existing.scalar_one_or_none()
+    if doc:
+        doc.content = payload
+    else:
+        doc = Documentation(repo_id=body.repo_id, doc_type=key, content=payload)
+        db.add(doc)
+
+    await db.commit()
+    return {
+        "saved": True,
+        "doc_type": body.doc_type,
+        "label": body.label or f"Custom {body.doc_type} style",
+        "character_count": len(body.reference_text),
+    }
+
+
+@router.get("/{repo_id}/style-reference/{doc_type}")
+async def get_style_reference(
+    repo_id: int,
+    doc_type: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the saved style reference for a (repo, doc_type) pair, if any."""
+    result = await db.execute(
+        select(Repository).where(
+            Repository.id == repo_id,
+            Repository.user_id == current_user.id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    result = await db.execute(
+        select(Documentation).where(
+            Documentation.repo_id == repo_id,
+            Documentation.doc_type == f"style_reference:{doc_type}",
+        )
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        return {"reference": None}
+
+    return {"reference": json.loads(doc.content)}
+
+
+@router.delete("/{repo_id}/style-reference/{doc_type}")
+async def delete_style_reference(
+    repo_id: int,
+    doc_type: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a saved style reference."""
+    result = await db.execute(
+        select(Repository).where(
+            Repository.id == repo_id,
+            Repository.user_id == current_user.id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    await db.execute(
+        delete(Documentation).where(
+            Documentation.repo_id == repo_id,
+            Documentation.doc_type == f"style_reference:{doc_type}",
+        )
+    )
+    await db.commit()
+    return {"deleted": True}
+
+
+@router.post("/generate-with-reference")
+async def generate_with_reference(
+    body: GenerateWithReferenceRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate documentation that mirrors a provided reference doc's structure/tone.
+    The reference is used as a *format template only* — all content comes from the
+    actual codebase context.
+    """
+    result = await db.execute(
+        select(Repository).where(
+            Repository.id == body.repo_id,
+            Repository.user_id == current_user.id,
+        )
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    if len(body.reference_text.strip()) < 50:
+        raise HTTPException(status_code=422, detail="Reference text too short.")
+
+    ctx = await _build_context(db, body.repo_id, body.file_path)
+    ctx["repo_name"] = repo.full_name
+
+    # Trim the reference to ~6000 chars so we don't blow the context window
+    reference_trimmed = body.reference_text[:6000]
+    if len(body.reference_text) > 6000:
+        reference_trimmed += "\n\n[... reference truncated for length ...]"
+
+    extra = f"\n\nAdditional instructions: {body.custom_instructions}" if body.custom_instructions else ""
+
+    prompt = (
+        f"You are a senior software engineer writing documentation for the repository: {repo.full_name}.\n\n"
+        f"## CODEBASE CONTEXT\n{ctx.get('context', ctx.get('symbols', ''))}\n\n"
+        f"## REFERENCE DOCUMENT\n"
+        f"Study the following reference document carefully. "
+        f"Your output must:\n"
+        f"  - Mirror its section structure and heading hierarchy exactly\n"
+        f"  - Match its tone (formal/casual/terse/detailed)\n"
+        f"  - Replicate its formatting patterns (badges, tables, code blocks, callout boxes)\n"
+        f"  - Be the same approximate length and depth\n"
+        f"  - Contain ONLY content accurate to the actual codebase above — "
+        f"never copy the reference content itself, only its shape.\n\n"
+        f"```\n{reference_trimmed}\n```\n\n"
+        f"## YOUR TASK\n"
+        f"Generate the `{body.doc_type}` documentation for `{repo.full_name}` "
+        f"in the exact style of the reference above.{extra}\n\n"
+        f"Output only the final Markdown document, no preamble or explanation."
+    )
+
+    system = (
+        "You are a meticulous technical writer. "
+        "You study reference documents and reproduce their exact structure and formatting "
+        "while filling them with accurate, project-specific content. "
+        "Never copy reference content verbatim — only its structure, headings, tone, and formatting."
+    )
+
+    content = _chat(prompt, system)
+
+    # Save to documentation table
+    doc_type_key = body.doc_type
+    existing = await db.execute(
+        select(Documentation).where(
+            Documentation.repo_id == body.repo_id,
+            Documentation.doc_type == doc_type_key,
+        )
+    )
+    doc = existing.scalar_one_or_none()
+    if doc:
+        doc.content = content
+    else:
+        doc = Documentation(
+            repo_id=body.repo_id, doc_type=doc_type_key, content=content
+        )
+        db.add(doc)
+
+    await db.commit()
+
+    pr_result = None
+    if body.create_pr:
+        try:
+            pr_result = await _create_github_pr(
+                repo=repo,
+                user=current_user,
+                doc_type=body.doc_type,
+                content=content,
+                file_path=body.file_path,
+            )
+        except Exception as e:
+            pr_result = {"error": str(e)}
+
+    return {
+        "content": content,
+        "doc_type": doc_type_key,
+        "saved": True,
+        "reference_used": True,
         "pr": pr_result,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
