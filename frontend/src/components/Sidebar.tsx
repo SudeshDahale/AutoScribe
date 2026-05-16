@@ -1,9 +1,5 @@
 import type { Repo, RepoHealth } from "../types";
 import { LANG_COLOR, LANG_ICON } from "../constants";
-import { Badge } from "./ui/Badge";
-import { Spinner } from "./ui/Spinner";
-import { EmptyState } from "./ui/EmptyState";
-import { HealthPill } from "./ui/HealthPill";
 
 interface Props {
   repos: Repo[];
@@ -28,6 +24,13 @@ interface Props {
   onOpenPromptEditor: (r: Repo) => void;
 }
 
+function CoverageDot({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="dot-gray" />;
+  if (pct >= 70) return <span className="dot-green" />;
+  if (pct >= 35) return <span className="dot-amber" />;
+  return <span className="dot-red" />;
+}
+
 export function Sidebar({
   repos, selectedRepo, healthScores, loading, error,
   repoInput, adding, parsing, generatingReadme, loadingAnalytics,
@@ -36,137 +39,208 @@ export function Sidebar({
   onOpenWebhook, onOpenPromptEditor,
 }: Props) {
   return (
-    <aside className="flex flex-col h-full border-r border-gray-100 dark:border-white/[0.06] bg-white/60 dark:bg-[#12121a]/60 backdrop-blur-sm">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-100 dark:border-white/[0.06]">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300">Repositories</h2>
-          <Badge className="bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400 font-bold">
+    <aside style={{
+      display: 'flex', flexDirection: 'column',
+      height: '100%',
+      borderRight: '1px solid var(--border)',
+      background: 'var(--surface)',
+    }}>
+      {/* Add repo */}
+      <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'DM Sans, sans-serif' }}>
+            Repositories
+          </span>
+          <span style={{
+            fontSize: 11, fontFamily: 'DM Mono, monospace',
+            color: 'var(--text-3)',
+            background: 'var(--surface-3)',
+            border: '1px solid var(--border)',
+            borderRadius: 5, padding: '1px 6px',
+          }}>
             {repos.length}
-          </Badge>
+          </span>
         </div>
-
-        <form onSubmit={onAddRepo} className="flex gap-2">
+        <form onSubmit={onAddRepo} style={{ display: 'flex', gap: 6 }}>
           <input
+            className="input-base"
             type="text"
-            placeholder="owner/repo-name"
+            placeholder="owner/repo"
             value={repoInput}
-            onChange={(e) => onRepoInputChange(e.target.value)}
+            onChange={e => onRepoInputChange(e.target.value)}
             disabled={adding}
-            className="input-base flex-1 min-w-0 py-2 text-xs"
+            style={{ flex: 1, minWidth: 0 }}
           />
           <button
             type="submit"
+            className="btn-primary"
             disabled={adding || !repoInput.trim()}
-            className="btn-primary flex-shrink-0 px-3 py-2 text-xs rounded-xl"
+            style={{ flexShrink: 0, padding: '0 12px' }}
           >
-            {adding ? "…" : "Add"}
+            {adding ? '…' : 'Add'}
           </button>
         </form>
-
         {error && (
-          <p className="text-xs text-red-500 mt-2 flex items-center gap-1.5">
+          <p style={{ fontSize: 12, color: '#f87171', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>⚠</span> {error}
           </p>
         )}
       </div>
 
-      {/* Repo list */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1">
+      {/* List */}
+      <div className="scrollbar-thin" style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
         {loading ? (
-          <Spinner label="Loading repos…" />
+          <div style={{ padding: '32px 0', textAlign: 'center' }}>
+            <div className="spinner" />
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12 }}>Loading…</p>
+          </div>
         ) : repos.length === 0 ? (
-          <EmptyState icon="📁" title="No repos yet" sub="Add a GitHub repo above to get started" />
+          <div style={{ padding: '40px 16px', textAlign: 'center' }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>◫</div>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', fontFamily: 'DM Mono, monospace' }}>No repos yet</p>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Add a GitHub repo above</p>
+          </div>
         ) : (
-          repos.map((repo) => {
+          repos.map(repo => {
             const health = healthScores[repo.id];
             const isSelected = selectedRepo?.id === repo.id;
+
+            const actions = [
+              { label: 'Parse', shortLabel: '⚙', action: () => onParseRepo(repo), busy: parsing && selectedRepo?.id === repo.id },
+              { label: 'README', shortLabel: '✦', action: () => onGenerateReadme(repo), busy: generatingReadme && selectedRepo?.id === repo.id },
+              { label: 'Search', shortLabel: '⌕', action: () => onOpenSearch(repo), busy: false },
+              { label: 'Analytics', shortLabel: '◈', action: () => onOpenAnalytics(repo), busy: loadingAnalytics && selectedRepo?.id === repo.id },
+              { label: 'PR Bot', shortLabel: '⟲', action: () => onOpenWebhook(repo), busy: false },
+              { label: 'Prompt', shortLabel: '✎', action: () => onOpenPromptEditor(repo), busy: false },
+            ];
 
             return (
               <div
                 key={repo.id}
                 onClick={() => onSelectRepo(repo)}
-                className={`group rounded-2xl border p-3.5 cursor-pointer transition-all duration-150 ${
-                  isSelected
-                    ? "border-violet-300 dark:border-violet-700/60 bg-violet-50 dark:bg-violet-900/15 shadow-glow"
-                    : "border-transparent hover:border-gray-200 dark:hover:border-white/[0.08] hover:bg-gray-50 dark:hover:bg-white/[0.03]"
-                }`}
+                style={{
+                  borderRadius: 10,
+                  border: `1px solid ${isSelected ? 'var(--amber-border)' : 'transparent'}`,
+                  background: isSelected ? 'var(--amber-dim)' : 'transparent',
+                  padding: '10px 10px 8px',
+                  cursor: 'pointer',
+                  marginBottom: 4,
+                  transition: 'all 0.12s',
+                  position: 'relative',
+                }}
+                onMouseEnter={e => {
+                  if (!isSelected) {
+                    e.currentTarget.style.background = 'var(--surface-3)';
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!isSelected) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = 'transparent';
+                  }
+                }}
               >
-                {/* Repo name row */}
-                <div className="flex items-start justify-between gap-2 mb-1.5">
+                {/* Name + delete */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 6 }}>
                   <a
                     href={repo.github_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-sm font-semibold text-gray-800 dark:text-gray-200 hover:text-violet-600 truncate leading-tight"
+                    target="_blank" rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      fontSize: 13, fontWeight: 600,
+                      fontFamily: 'DM Mono, monospace',
+                      color: isSelected ? 'var(--amber)' : 'var(--text-1)',
+                      textDecoration: 'none',
+                      lineHeight: 1.3,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}
                   >
                     {repo.full_name}
                   </a>
-
                   <button
-                    onClick={(e) => { e.stopPropagation(); onDeleteRepo(repo.id); }}
-                    className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-xs flex-shrink-0"
+                    onClick={e => { e.stopPropagation(); onDeleteRepo(repo.id); }}
+                    style={{
+                      width: 20, height: 20, borderRadius: 5,
+                      border: 'none', background: 'transparent',
+                      cursor: 'pointer', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--text-3)', fontSize: 11,
+                      opacity: 0, transition: 'all 0.12s',
+                    }}
+                    className="delete-btn"
+                    onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(248,113,113,0.1)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     ✕
                   </button>
                 </div>
 
-                {/* Health row */}
-                <div className="flex items-center gap-2 mb-1.5">
-                  <HealthPill
-                    health={
-                      health ?? {
-                        repoId: repo.id,
-                        coverage_pct: null,
-                        stale_count: null,
-                        status: null,
-                        loading: false,
-                      }
-                    }
-                  />
+                {/* Health status + language */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                  <CoverageDot pct={health?.coverage_pct ?? null} />
+                  <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'DM Mono, monospace' }}>
+                    {health?.coverage_pct != null
+                      ? `${Math.round(health.coverage_pct)}% coverage`
+                      : health?.loading ? 'loading…' : 'not analyzed'}
+                  </span>
                   {health?.stale_count != null && health.stale_count > 0 && (
-                    <span className="text-[10px] text-yellow-600 dark:text-yellow-500 font-medium">
-                      ⚠ {health.stale_count} stale
+                    <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 600, marginLeft: 'auto' }}>
+                      {health.stale_count} stale
+                    </span>
+                  )}
+                  {repo.language && (
+                    <span style={{
+                      fontSize: 10, fontFamily: 'DM Mono, monospace',
+                      color: 'var(--text-3)',
+                      marginLeft: 'auto',
+                    }}>
+                      {repo.language}
                     </span>
                   )}
                 </div>
 
+                {/* Description */}
                 {repo.description && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 line-clamp-2 leading-relaxed">
+                  <p style={{
+                    fontSize: 11.5, color: 'var(--text-3)',
+                    marginBottom: 8, lineHeight: 1.5,
+                    display: '-webkit-box', WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  }}>
                     {repo.description}
                   </p>
                 )}
 
-                {/* Badges */}
-                <div className="flex flex-wrap gap-1 mb-2.5">
-                  {repo.language && (
-                    <Badge className={LANG_COLOR[repo.language.toLowerCase()] ?? "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400"}>
-                      {LANG_ICON[repo.language.toLowerCase()] ?? "🔤"} {repo.language}
-                    </Badge>
-                  )}
-                  <Badge className="bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">
-                    ⭐ {repo.stars.toLocaleString()}
-                  </Badge>
-                </div>
-
                 {/* Action buttons */}
-                <div className="flex gap-1 flex-wrap">
-                  {[
-                    { label: "⚙ Parse", action: () => onParseRepo(repo), busy: parsing && selectedRepo?.id === repo.id },
-                    { label: "✨ README", action: () => onGenerateReadme(repo), busy: generatingReadme && selectedRepo?.id === repo.id },
-                    { label: "🔍 Search", action: () => onOpenSearch(repo), busy: false },
-                    { label: "📊 Analytics", action: () => onOpenAnalytics(repo), busy: loadingAnalytics && selectedRepo?.id === repo.id },
-                    { label: "🤖 PR Bot", action: () => onOpenWebhook(repo), busy: false },
-                    { label: "✏️ Prompt", action: () => onOpenPromptEditor(repo), busy: false },
-                  ].map(({ label, action, busy }) => (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {actions.map(({ label, action, busy }) => (
                     <button
                       key={label}
-                      onClick={(e) => { e.stopPropagation(); action(); }}
+                      onClick={e => { e.stopPropagation(); action(); }}
                       disabled={busy}
-                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-gray-400 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 disabled:opacity-40 transition-all duration-100"
+                      style={{
+                        fontSize: 11, fontWeight: 500,
+                        fontFamily: 'DM Sans, sans-serif',
+                        padding: '3px 8px', borderRadius: 6,
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface-3)',
+                        color: 'var(--text-2)',
+                        cursor: 'pointer', transition: 'all 0.12s',
+                        opacity: busy ? 0.4 : 1,
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = 'var(--amber-border)';
+                        e.currentTarget.style.color = 'var(--amber)';
+                        e.currentTarget.style.background = 'var(--amber-dim)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-2)';
+                        e.currentTarget.style.background = 'var(--surface-3)';
+                      }}
                     >
-                      {busy ? "…" : label}
+                      {busy ? '…' : label}
                     </button>
                   ))}
                 </div>
@@ -175,6 +249,9 @@ export function Sidebar({
           })
         )}
       </div>
+
+      {/* Sidebar hover opacity fix */}
+      <style>{`.delete-btn { opacity: 0 !important; } div:hover > div > .delete-btn { opacity: 1 !important; }`}</style>
     </aside>
   );
 }
