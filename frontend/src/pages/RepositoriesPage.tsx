@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { API } from '../constants';
 import type { Repo, RepoHealth } from '../types';
 import { CoverageRing } from '../components/ui/CoverageRing';
 import { ParsePanel } from '../components/panels/ParsePanel';
@@ -8,6 +9,7 @@ import { SearchPanel } from '../components/panels/SearchPanel';
 import { AnalyticsPanel } from '../components/panels/AnalyticsPanel';
 import { StalenessPanel } from '../components/panels/StalenessPanel';
 import { WebhookPanel } from '../components/panels/WebhookPanel';
+import { MarkdownRenderer } from '../components/ui/MarkdownRenderer';
 
 // ─── Connect Repository Modal ────────────────────────────────────────────────
 
@@ -230,161 +232,418 @@ function SettingsPanel({ selectedRepo, webhookAutoRegen, onAutoRegenToggle, onDe
 
 // ─── Documents Panel ─────────────────────────────────────────────────────────
 
-function DocumentsPanel({ parseResults, onGenerateDocstrings, parsing, parseError }: any) {
+
+// ─── Documents Panel ──────────────────────────────────────────────────────────
+function DocumentsPanel({ parseResults, onGenerateDocstrings, parsing, parseError, user, selectedRepo, readme, onCopy, copied, onRegenerate, generating }: any) {
   const [filter, setFilter] = useState('');
   const [selectedFile, setSelectedFile] = useState<any>(null);
+  const [activeDocTab, setActiveDocTab] = useState<'files' | 'readme'>('files');
+  const [exampleFile, setExampleFile] = useState<string>('');
+  const [exampleLabel, setExampleLabel] = useState<string>('');
+  const [showExampleUpload, setShowExampleUpload] = useState(false);
+  const [savingExample, setSavingExample] = useState(false);
+  const [exampleSaved, setExampleSaved] = useState(false);
+  const [exampleError, setExampleError] = useState('');
+  const [generatingWithExample, setGeneratingWithExample] = useState(false);
+  const [viewMode, setViewMode] = useState<'rendered' | 'raw'>('rendered');
+  const [showCommit, setShowCommit] = useState(false);
+  const [commitMsg, setCommitMsg] = useState('docs: update README via AutoScribe');
+  const [createPR, setCreatePR] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [commitResult, setCommitResult] = useState<any>(null);
+  const [commitError, setCommitError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const exampleRef = useRef<HTMLInputElement>(null);
 
   const filtered = parseResults.filter((f: any) =>
     !filter || f.file_path.toLowerCase().includes(filter.toLowerCase())
   );
 
   const getStatusBadge = (f: any) => {
-    if (!f.symbols || f.symbols.length === 0) return { label: 'MISSING', cls: 'badge-missing' };
-    if (f.symbols.some((s: any) => !s.docstring)) return { label: 'DRIFTED', cls: 'badge-drifting' };
-    return { label: 'FRESH', cls: 'badge-fresh' };
+    if (!f.symbols || f.symbols.length === 0) return { label: 'MISSING', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' };
+    if (f.symbols.some((s: any) => !s.docstring)) return { label: 'DRIFTED', color: '#f97316', bg: 'rgba(249,115,22,0.08)' };
+    return { label: 'FRESH', color: '#a3e635', bg: 'rgba(163,230,53,0.08)' };
+  };
+
+  const handleExampleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setExampleFile(ev.target?.result as string ?? '');
+    reader.readAsText(file);
+    if (!exampleLabel) setExampleLabel(file.name.replace(/\.[^.]+$/, '') + ' style');
+  };
+
+  const handleSaveExampleAndGenerate = async () => {
+    if (!selectedRepo || !exampleFile.trim() || !user) return;
+    setGeneratingWithExample(true); setExampleError('');
+    try {
+      const res = await fetch(`${API}/prompt-editor/generate-with-reference`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.access_token}` },
+        body: JSON.stringify({ repo_id: selectedRepo.id, doc_type: 'readme', reference_text: exampleFile }),
+      });
+      if (!res.ok) { setExampleError('Failed to generate with example file.'); }
+      else {
+        setExampleSaved(true);
+        if (onRegenerate) onRegenerate(exampleFile);
+        setShowExampleUpload(false);
+        setTimeout(() => setExampleSaved(false), 3000);
+      }
+    } catch { setExampleError('Network error.'); }
+    setGeneratingWithExample(false);
+  };
+
+  const handleCommit = async () => {
+    if (!selectedRepo || !readme || !user) return;
+    setCommitting(true); setCommitError(''); setCommitResult(null);
+    try {
+      const res = await fetch(`${API}/prompt-editor/create-pr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.access_token}` },
+        body: JSON.stringify({ repo_id: selectedRepo.id, doc_type: 'readme', content: readme, commit_message: commitMsg, create_pr: createPR }),
+      });
+      if (!res.ok) { const d = await res.json(); setCommitError(d.detail || 'Failed.'); }
+      else { const data = await res.json(); setCommitResult(data); }
+    } catch { setCommitError('Network error.'); }
+    setCommitting(false);
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, minHeight: 500, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-      {/* File list */}
-      <div style={{ borderRight: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-          <input
-            className="input-base"
-            placeholder="filter paths…"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}
-          />
-        </div>
-        <div className="scrollbar-thin" style={{ flex: 1, overflowY: 'auto' }}>
-          {parsing ? (
-            <div style={{ padding: 32, textAlign: 'center' }}>
-              <div className="spinner" />
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12 }}>Parsing…</p>
-            </div>
-          ) : parseError ? (
-            <p style={{ padding: 16, color: '#ef4444', fontSize: 12 }}>{parseError}</p>
-          ) : filtered.length === 0 ? (
-            <p style={{ padding: 24, color: 'var(--text-3)', fontSize: 12, textAlign: 'center' }}>No files found. Parse the repository first.</p>
-          ) : filtered.map((f: any) => {
-            const { label, cls } = getStatusBadge(f);
-            const isSelected = selectedFile?.file_path === f.file_path;
-            return (
-              <div
-                key={f.file_path}
-                onClick={() => setSelectedFile(f)}
-                style={{
-                  padding: '10px 14px', cursor: 'pointer',
-                  borderBottom: '1px solid var(--border)',
-                  background: isSelected ? 'var(--surface-3)' : 'transparent',
-                  transition: 'background 0.1s',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-3)'; }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--text-3)">
-                      <path d="M2 2h8l4 4v8H2z" />
-                    </svg>
-                    <span style={{
-                      fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text-1)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {f.file_path}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <span className={cls} style={{ fontSize: 10 }}>{label}</span>
-                    <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'DM Mono, monospace', textTransform: 'uppercase' }}>
-                      {f.symbols?.length > 0 ? (f.symbols[0].type ?? 'module') : 'module'}
-                    </span>
-                  </div>
-                </div>
-                <span style={{ color: 'var(--text-3)', fontSize: 14 }}>›</span>
-              </div>
-            );
-          })}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 600 }}>
+      {/* Sub-tabs: Files / README */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
+        {[
+          { id: 'files', label: '⬡ Files & Docstrings' },
+          { id: 'readme', label: '📄 README' },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveDocTab(t.id as any)}
+            style={{
+              padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 13, fontFamily: 'DM Mono, monospace',
+              color: activeDocTab === t.id ? 'var(--text-1)' : 'var(--text-3)',
+              borderBottom: activeDocTab === t.id ? '2px solid var(--lime)' : '2px solid transparent',
+              letterSpacing: '0.04em', transition: 'all 0.15s', marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Right panel: selected file */}
-      <div style={{ background: 'var(--surface)', padding: 28 }}>
-        {!selectedFile ? (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-            Select a file to view its documentation
+      {/* ── FILES TAB ── */}
+      {activeDocTab === 'files' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 0, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', flex: 1 }}>
+          {/* File list */}
+          <div style={{ borderRight: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+              <input
+                className="input-base"
+                placeholder="filter paths…"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}
+              />
+            </div>
+            <div className="scrollbar-thin" style={{ flex: 1, overflowY: 'auto' }}>
+              {parsing ? (
+                <div style={{ padding: 32, textAlign: 'center' }}>
+                  <div className="spinner" />
+                  <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12 }}>Parsing…</p>
+                </div>
+              ) : parseError ? (
+                <p style={{ padding: 16, color: '#ef4444', fontSize: 12 }}>{parseError}</p>
+              ) : filtered.length === 0 ? (
+                <p style={{ padding: 24, color: 'var(--text-3)', fontSize: 12, textAlign: 'center' }}>
+                  No files found. Parse the repository first.
+                </p>
+              ) : filtered.map((f: any) => {
+                const { label, color, bg } = getStatusBadge(f);
+                const isSelected = selectedFile?.file_path === f.file_path;
+                const parts = f.file_path.split('/');
+                const fileName = parts[parts.length - 1];
+                const dirPath = parts.slice(0, -1).join('/');
+                return (
+                  <div
+                    key={f.file_path}
+                    onClick={() => setSelectedFile(f)}
+                    style={{
+                      padding: '10px 14px', cursor: 'pointer',
+                      borderBottom: '1px solid var(--border)',
+                      background: isSelected ? 'var(--surface-3)' : 'transparent',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {dirPath && (
+                      <p style={{ fontSize: 10, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {dirPath}/
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                      <span style={{ fontSize: 13, fontFamily: 'DM Mono, monospace', color: isSelected ? 'var(--lime)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {fileName}
+                      </span>
+                      <span style={{ fontSize: 9, fontFamily: 'DM Mono, monospace', padding: '2px 6px', borderRadius: 4, background: bg, color, flexShrink: 0, letterSpacing: '0.06em' }}>
+                        {label}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 11, color: 'var(--text-3)', margin: '3px 0 0', fontFamily: 'DM Mono, monospace' }}>
+                      {f.symbols?.length ?? 0} symbols
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        ) : (() => {
-          const sym = selectedFile.symbols?.[0];
-          return (
-            <div>
-              <p style={{ fontSize: 10, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 6px' }}>
-                {sym?.type ?? 'module'}
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                <h2 style={{ fontSize: 22, fontFamily: 'DM Mono, monospace', fontWeight: 600, margin: 0 }}>
-                  {selectedFile.file_path}
-                </h2>
-                <div style={{ display: 'flex', gap: 8 }}>
+
+          {/* File detail */}
+          <div className="scrollbar-thin" style={{ background: 'var(--surface)', padding: 28, overflowY: 'auto' }}>
+            {!selectedFile ? (
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, color: 'var(--text-3)' }}>
+                <p style={{ fontSize: 32, margin: 0 }}>⬡</p>
+                <p style={{ fontSize: 14, margin: 0 }}>Select a file to view its documentation</p>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 12 }}>
+                  <div>
+                    <p style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 6px' }}>
+                      {selectedFile.language ?? 'File'}
+                    </p>
+                    <h2 style={{ fontSize: 16, fontFamily: 'DM Mono, monospace', fontWeight: 600, margin: 0, color: 'var(--text-1)', wordBreak: 'break-all' }}>
+                      {selectedFile.file_path}
+                    </h2>
+                    <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '4px 0 0' }}>
+                      {selectedFile.symbols?.length ?? 0} symbols detected
+                    </p>
+                  </div>
                   <button
                     className="btn-primary"
-                    style={{ fontSize: 12 }}
+                    style={{ fontSize: 12, flexShrink: 0 }}
                     onClick={() => onGenerateDocstrings(selectedFile)}
                   >
-                    ✦ Regenerate
+                    ✦ Regenerate docs
                   </button>
                 </div>
-              </div>
 
-              {sym?.docstring ? (
-                <div style={{ marginBottom: 24 }}>
-                  <p style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-                    Generated Docstring
-                  </p>
-                  <p style={{ fontSize: 16, fontWeight: 500, lineHeight: 1.7, margin: '0 0 16px' }}>
-                    {sym.docstring}
-                  </p>
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    padding: '8px 14px', borderRadius: 8,
-                    background: 'var(--surface-3)', border: '1px solid var(--border)',
-                    fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text-2)',
-                  }}>
-                    Written by <span style={{ color: 'var(--lime)', fontWeight: 600 }}>AutoScribe v0.3</span>
-                    &nbsp;·&nbsp;grounded in {selectedFile.symbols?.length ?? 0} surrounding symbols
-                    &nbsp;·&nbsp;today
+                {/* All symbols */}
+                {selectedFile.symbols?.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {selectedFile.symbols.map((sym: any, idx: number) => (
+                      <div key={idx} style={{ padding: '16px 20px', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sym.docstring ? 10 : 0 }}>
+                          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 700, color: sym.type === 'function' ? '#60a5fa' : sym.type === 'class' ? '#c084fc' : '#a3e635' }}>
+                            {sym.type === 'function' ? 'ƒ' : sym.type === 'class' ? '◈' : '·'}
+                          </span>
+                          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>{sym.name}</span>
+                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-3)', fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            {sym.type}
+                          </span>
+                          {sym.line && <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 'auto', fontFamily: 'DM Mono, monospace' }}>L{sym.line}</span>}
+                        </div>
+                        {sym.docstring ? (
+                          <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.7, margin: 0, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                            {sym.docstring}
+                          </p>
+                        ) : (
+                          <p style={{ fontSize: 13, color: 'var(--text-3)', margin: 0, fontStyle: 'italic', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                            No docstring yet
+                          </p>
+                        )}
+                        {sym.source && (
+                          <details style={{ marginTop: 10 }}>
+                            <summary style={{ fontSize: 11, color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                              Source
+                            </summary>
+                            <pre style={{ marginTop: 8, padding: '12px 14px', borderRadius: 8, background: 'var(--surface-3)', border: '1px solid var(--border)', fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text-2)', overflow: 'auto', lineHeight: 1.6 }}>
+                              {sym.source.slice(0, 600)}
+                            </pre>
+                          </details>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ) : (
-                <div style={{
-                  padding: '24px', borderRadius: 12, background: 'var(--surface-2)',
-                  border: '1px solid var(--border)', marginBottom: 24, color: 'var(--text-3)',
-                  fontSize: 13,
-                }}>
-                  No docstring yet. Click Regenerate to generate one.
-                </div>
-              )}
+                ) : (
+                  <div style={{ padding: 24, borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)', fontSize: 13, textAlign: 'center' }}>
+                    No symbols detected in this file.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              {sym?.source && (
-                <div>
-                  <p style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-                    Source Excerpt
-                  </p>
-                  <pre style={{
-                    padding: '16px', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)',
-                    fontSize: 12, fontFamily: 'DM Mono, monospace', color: 'var(--text-2)',
-                    overflow: 'auto', margin: 0, lineHeight: 1.7,
-                  }}>
-                    {sym.source.slice(0, 400)}
-                  </pre>
+      {/* ── README TAB ── */}
+      {activeDocTab === 'readme' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          {/* README toolbar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            {/* Example file upload button */}
+            <button
+              onClick={() => setShowExampleUpload(v => !v)}
+              style={{
+                padding: '6px 12px', borderRadius: 8,
+                background: showExampleUpload ? 'rgba(96,165,250,0.08)' : 'var(--surface-3)',
+                border: `1px solid ${showExampleUpload ? 'rgba(96,165,250,0.3)' : 'var(--border)'}`,
+                color: showExampleUpload ? '#60a5fa' : 'var(--text-2)',
+                cursor: 'pointer', fontSize: 12, fontFamily: 'DM Mono, monospace',
+              }}
+            >
+              📎 Example file
+            </button>
+
+            {readme && (
+              <>
+                <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface-3)' }}>
+                  {(['rendered', 'raw'] as const).map(mode => (
+                    <button key={mode} onClick={() => setViewMode(mode)} style={{
+                      padding: '6px 12px', background: viewMode === mode ? 'var(--surface-4)' : 'transparent',
+                      border: 'none', cursor: 'pointer', fontSize: 12,
+                      color: viewMode === mode ? 'var(--text-1)' : 'var(--text-3)',
+                      fontFamily: 'DM Mono, monospace', transition: 'all 0.15s',
+                    }}>
+                      {mode === 'rendered' ? '⬡ Preview' : '{ } Raw'}
+                    </button>
+                  ))}
+                </div>
+
+                <button onClick={() => { if (onCopy) onCopy(readme); }} style={{
+                  padding: '6px 12px', borderRadius: 8,
+                  background: copied ? 'rgba(163,230,53,0.08)' : 'var(--surface-3)',
+                  border: `1px solid ${copied ? 'rgba(163,230,53,0.3)' : 'var(--border)'}`,
+                  color: copied ? 'var(--lime)' : 'var(--text-2)',
+                  cursor: 'pointer', fontSize: 12, fontFamily: 'DM Mono, monospace',
+                }}>
+                  {copied ? '✓ Copied' : '📋 Copy MD'}
+                </button>
+
+                <button onClick={() => { setShowCommit(v => !v); setCommitResult(null); setCommitError(''); }} style={{
+                  padding: '6px 14px', borderRadius: 8,
+                  background: showCommit ? 'var(--lime)' : 'var(--surface-3)',
+                  border: `1px solid ${showCommit ? 'var(--lime)' : 'var(--border)'}`,
+                  color: showCommit ? '#0a0f02' : 'var(--text-1)',
+                  cursor: 'pointer', fontSize: 12, fontFamily: 'DM Mono, monospace', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77A5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                  </svg>
+                  Commit to GitHub
+                </button>
+              </>
+            )}
+
+            {generating && <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'DM Mono, monospace' }}>⟳ Generating…</span>}
+          </div>
+
+          {/* Example file upload panel */}
+          {showExampleUpload && (
+            <div style={{ padding: 16, borderRadius: 10, marginBottom: 16, background: 'rgba(96,165,250,0.04)', border: '1px solid rgba(96,165,250,0.15)' }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', margin: '0 0 4px', fontFamily: 'Syne, sans-serif' }}>
+                📎 Generate from example file
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '0 0 12px' }}>
+                Upload a README you like — AutoScribe will match its structure and tone using your repo's actual codebase.
+              </p>
+              <input ref={exampleRef} type="file" accept=".md,.txt,.rst" style={{ display: 'none' }} onChange={handleExampleFileUpload} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                <button onClick={() => { if (exampleRef.current) exampleRef.current.click(); }} style={{
+                  padding: '7px 14px', borderRadius: 8, background: 'var(--surface-3)', border: '1px solid var(--border)',
+                  color: 'var(--text-2)', cursor: 'pointer', fontSize: 12,
+                }}>
+                  📁 Upload file
+                </button>
+                {exampleFile && <span style={{ fontSize: 12, color: '#60a5fa', fontFamily: 'DM Mono, monospace' }}>✓ {exampleLabel || 'File loaded'} ({exampleFile.length} chars)</span>}
+              </div>
+              {exampleFile && (
+                <textarea
+                  value={exampleFile}
+                  onChange={e => setExampleFile(e.target.value)}
+                  placeholder="Or paste your example README here…"
+                  style={{ width: '100%', height: 100, padding: '8px 12px', borderRadius: 8, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12, fontFamily: 'DM Mono, monospace', resize: 'vertical', outline: 'none', marginBottom: 10 }}
+                />
+              )}
+              {!exampleFile && (
+                <textarea
+                  value={exampleFile}
+                  onChange={e => setExampleFile(e.target.value)}
+                  placeholder="Or paste your example README here…"
+                  style={{ width: '100%', height: 80, padding: '8px 12px', borderRadius: 8, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 12, fontFamily: 'DM Mono, monospace', resize: 'vertical', outline: 'none', marginBottom: 10 }}
+                />
+              )}
+              {exampleError && <p style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{exampleError}</p>}
+              <button
+                onClick={handleSaveExampleAndGenerate}
+                disabled={generatingWithExample || !exampleFile.trim()}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, background: exampleFile.trim() ? '#60a5fa' : 'var(--surface-4)',
+                  border: 'none', color: exampleFile.trim() ? '#fff' : 'var(--text-3)',
+                  cursor: exampleFile.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 600,
+                }}
+              >
+                {generatingWithExample ? '⟳ Generating…' : '✨ Generate with example'}
+              </button>
+            </div>
+          )}
+
+          {/* GitHub commit panel */}
+          {showCommit && readme && (
+            <div style={{ padding: 16, borderRadius: 10, marginBottom: 16, background: 'rgba(163,230,53,0.04)', border: '1px solid rgba(163,230,53,0.15)' }}>
+              <p style={{ fontSize: 13, fontWeight: 700, margin: '0 0 12px', fontFamily: 'Syne, sans-serif', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a3e635" strokeWidth="2">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77A5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                </svg>
+                Commit to GitHub
+              </p>
+              <input value={commitMsg} onChange={e => setCommitMsg(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-1)', fontFamily: 'DM Mono, monospace', fontSize: 13, outline: 'none', marginBottom: 10 }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 12 }}>
+                <div onClick={() => setCreatePR(v => !v)} style={{ width: 38, height: 20, borderRadius: 99, position: 'relative', background: createPR ? 'var(--lime)' : 'var(--surface-4)', border: '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 }}>
+                  <span style={{ position: 'absolute', top: 2, left: createPR ? 17 : 2, width: 14, height: 14, borderRadius: '50%', background: createPR ? '#0a0f02' : 'var(--text-3)', transition: 'left 0.2s' }} />
+                </div>
+                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Open Pull Request instead of direct commit</span>
+              </label>
+              {commitError && <p style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>⚠ {commitError}</p>}
+              {commitResult && (
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(163,230,53,0.08)', border: '1px solid rgba(163,230,53,0.2)', marginBottom: 10 }}>
+                  <p style={{ fontSize: 13, color: 'var(--lime)', fontWeight: 600, margin: commitResult.pr_url ? '0 0 4px' : 0 }}>✓ Success!</p>
+                  {commitResult.pr_url && <a href={commitResult.pr_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: 'var(--lime)', textDecoration: 'none' }}>View Pull Request →</a>}
+                  {!commitResult.pr_url && commitResult.note && <p style={{ fontSize: 12, color: 'var(--text-2)', margin: 0 }}>{commitResult.note}</p>}
                 </div>
               )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setShowCommit(false)} style={{ padding: '7px 14px', borderRadius: 8, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-2)', cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+                <button onClick={handleCommit} disabled={committing || !commitMsg.trim()} style={{ padding: '7px 18px', borderRadius: 8, background: 'var(--lime)', border: 'none', color: '#0a0f02', cursor: committing ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, opacity: committing ? 0.7 : 1 }}>
+                  {committing ? '⟳ Committing…' : createPR ? 'Open PR' : 'Commit README.md'}
+                </button>
+              </div>
             </div>
-          );
-        })()}
-      </div>
+          )}
+
+          {/* README content */}
+          {!readme ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, color: 'var(--text-3)' }}>
+              <p style={{ fontSize: 32, margin: 0 }}>📄</p>
+              <p style={{ fontSize: 14, margin: 0 }}>No README generated yet</p>
+              <p style={{ fontSize: 13, color: 'var(--text-3)', margin: 0 }}>Click "▷ Regenerate all" to generate one</p>
+            </div>
+          ) : viewMode === 'raw' ? (
+            <div style={{ flex: 1, overflow: 'auto', padding: 24, borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <pre style={{ margin: 0, fontFamily: 'DM Mono, monospace', fontSize: 12, color: 'var(--text-2)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {readme}
+              </pre>
+            </div>
+          ) : (
+            <div className="scrollbar-thin" style={{ flex: 1, overflow: 'auto', padding: '32px 40px', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <MarkdownRenderer content={readme} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -753,10 +1012,10 @@ function RepoDetailView({
           <ParsePanel {...rest} repoName={selectedRepo?.full_name} />
         )}
         {rightPanel === 'documents' && (
-          <DocumentsPanel {...rest} />
+          <DocumentsPanel {...rest} selectedRepo={selectedRepo} user={rest.user} />
         )}
         {rightPanel === 'readme' && (
-          <ReadmePanel {...rest} repoId={selectedRepo?.id} />
+          <ReadmePanel {...rest} repoId={selectedRepo?.id} token={rest.token ?? ''} />
         )}
         {rightPanel === 'docstrings' && (
           <DocstringsPanel {...rest} />
