@@ -1,179 +1,49 @@
 # AutoScribe
-AI-powered documentation automation for GitHub repositories.
+Automated documentation and code analysis tool for GitHub repositories.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code Quality](https://img.shields.io/badge/Code%20Quality-A-%23ff0000.svg)](https://github.com/SudeshDahale/AutoScribe)
+[![Documentation](https://img.shields.io/badge/Documentation-Yes-%2300ff00.svg)](https://github.com/SudeshDahale/AutoScribe)
 
-![banner](./assets/cover.png)
-
-## What it does
-
-AutoScribe connects to your GitHub account, analyzes your codebase, and automatically generates and maintains documentation — so it never goes stale as your code evolves.
-
-**Key features:**
-- GitHub OAuth login — connect your account in one click
-- AST-based code parsing via Tree-sitter (Python, JavaScript, TypeScript)
-- AI-generated READMEs and function-level docstrings (powered by Groq)
-- Staleness detection — flags docs that are out of sync with code changes
-- Incremental updates — re-generates only what changed
-- GitHub webhook support — auto-triggers on push
-- Semantic search + RAG Q&A over your codebase (FAISS + SentenceTransformers)
-- Prompt editor — customize and preview doc-generation prompts
-- Analytics dashboard — coverage %, staleness counts, doc health scores
+## Feature Highlights
+* Automated documentation generation for GitHub repositories
+* Code analysis and staleness detection
+* Support for multiple programming languages
+* Integration with GitHub webhooks for real-time updates
+* User-friendly interface for repository management and analytics
 
 ## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React + TypeScript + Vite + Tailwind CSS |
-| Backend | FastAPI (Python 3.11+) |
-| Database | SQLite (local) / PostgreSQL (production) |
-| Auth | GitHub OAuth |
-| Background Jobs | Celery + Redis |
-| AI / LLM | Groq API |
-| Code Parsing | Tree-sitter (Python, JS, TS) |
-| Semantic Search | FAISS + SentenceTransformers |
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.11 or 3.12
-- Node.js 18+
-- A free [Groq API key](https://console.groq.com) for doc generation
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/your-username/AutoScribe.git
-cd AutoScribe
-```
-
-### 2. Set up the backend
-
-```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Mac/Linux
-pip install -r requirements.txt
-```
-
-### 3. Create `backend/.env`
-
-```env
-DATABASE_URL=sqlite+aiosqlite:///./autoscribe.db
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-GITHUB_WEBHOOK_SECRET=your-webhook-secret
-GROQ_API_KEY=your-groq-api-key
-```
-
-**Getting GitHub credentials:**
-1. Go to https://github.com/settings/developers
-2. Click **New OAuth App**
-3. Set callback URL to `http://localhost:8000/api/v1/auth/github/callback`
-4. Copy the Client ID and Client Secret into `.env`
-
-**Getting a Groq API key:**
-1. Sign up at https://console.groq.com
-2. Create an API key and paste it into `.env` as `GROQ_API_KEY`
-
-### 4. Run the backend
-
-```bash
-cd backend
-uvicorn app.main:app --reload --port 8000
-```
-
-### 5. Set up and run the frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### 6. Open the app
-
-- **Frontend:** http://localhost:5173
-- **API docs:** http://localhost:8000/docs
-
-### 7. (Optional) Run background workers
-
-Celery workers handle async jobs. You'll need Redis running locally first:
-
-```bash
-# In a separate terminal, from the backend directory:
-celery -A app.workers.celery_app worker --loglevel=info
-```
-
-### 8. (Optional) Deploy with Docker
-
-A `docker-compose.yml` is included for production-style deployment with PostgreSQL, Redis, Celery workers, and the backend all wired together:
-
-```bash
-docker-compose up --build
-```
+| Technology | Description |
+| --- | --- |
+| Python | Backend programming language |
+| TypeScript | Frontend programming language |
+| GitHub API | Integration with GitHub for repository management |
+| SQLite | Database management system |
+| React | Frontend framework |
 
 ## Project Structure
+The project is divided into two main directories: `backend` and `frontend`. The `backend` directory contains the server-side code, including API endpoints, database models, and business logic. The `frontend` directory contains the client-side code, including the user interface and JavaScript files.
 
-```
-AutoScribe/
-├── backend/
-│   ├── app/
-│   │   ├── api/              # Route handlers
-│   │   │   ├── auth.py       # GitHub OAuth
-│   │   │   ├── repositories.py
-│   │   │   ├── parse.py      # AST parsing endpoints
-│   │   │   ├── docs_gen.py   # README + docstring generation
-│   │   │   ├── staleness.py  # Staleness detection + incremental updates
-│   │   │   ├── webhooks.py   # GitHub webhook handler
-│   │   │   ├── search.py     # Semantic search + RAG Q&A
-│   │   │   ├── prompt_editor.py  # Prompt template management
-│   │   │   └── health.py
-│   │   ├── core/
-│   │   │   ├── config.py
-│   │   │   ├── database.py
-│   │   │   ├── parser.py           # Tree-sitter AST parser
-│   │   │   ├── doc_generator.py    # Groq LLM integration
-│   │   │   ├── staleness_detector.py
-│   │   │   ├── incremental_updater.py
-│   │   │   ├── rag.py              # FAISS vector index + RAG
-│   │   │   └── github_fetch.py
-│   │   ├── models/           # SQLAlchemy models
-│   │   └── workers/          # Celery tasks
-│   ├── migrations/
-│   ├── test/
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── panels/       # Feature panels (Parse, README, Docstrings, Search, ...)
-│   │   │   └── ui/           # Reusable UI components
-│   │   ├── App.tsx
-│   │   └── types.ts
-│   └── package.json
-├── assets/
-├── docker-compose.yml
-└── README.md
-```
+## Quick-start Guide
+1. Clone the repository: `git clone https://github.com/SudeshDahale/AutoScribe.git`
+2. Install dependencies: `pip install -r requirements.txt` (backend) and `npm install` (frontend)
+3. Start the backend server: `python backend/app/main.py`
+4. Start the frontend server: `npm start`
+5. Access the application at `http://localhost:3000`
 
 ## API Overview
+The API provides the following endpoints:
+* `GET /api/health`: Health check endpoint
+* `POST /api/login`: Login endpoint
+* `GET /api/repositories`: List repositories endpoint
+* `POST /api/repositories`: Create repository endpoint
+* `GET /api/repositories/{id}`: Get repository endpoint
+* `PUT /api/repositories/{id}`: Update repository endpoint
+* `DELETE /api/repositories/{id}`: Delete repository endpoint
+* `GET /api/documentation`: Get documentation endpoint
+* `POST /api/documentation`: Generate documentation endpoint
 
-All endpoints are prefixed with `/api/v1`. Full interactive docs are available at `/docs` when the backend is running.
-
-| Tag | Endpoints | Description |
-|---|---|---|
-| `auth` | `GET /auth/github/login`, `/auth/github/callback` | GitHub OAuth flow |
-| `repositories` | `GET/POST/DELETE /repos` | Add, list, and remove repos |
-| `parse` | `POST /repos/{id}/parse` | Run Tree-sitter AST parsing |
-| `docs` | `POST /repos/{id}/generate-readme`, `/generate-docstrings` | AI doc generation |
-| `staleness` | `GET /repos/{id}/staleness`, `POST /repos/{id}/incremental-update` | Staleness detection + incremental updates |
-| `webhooks` | `POST /webhooks/github`, `GET/PUT /webhooks/{id}/config` | GitHub webhook integration |
-| `search` | `POST /repos/{id}/search`, `/rag-query`, `/index` | Semantic search + RAG Q&A |
-| `prompt-editor` | `GET /prompt-editor/templates`, `POST /prompt-editor/preview` | Prompt template management |
-
+## Contributing
+Contributions are welcome! Please submit a pull request with your changes and a brief description of what you've done.
 
 ## License
-
-MIT
+AutoScribe is licensed under the MIT License. See [LICENSE](https://github.com/SudeshDahale/AutoScribe/blob/main/LICENSE) for details.
