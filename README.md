@@ -1,58 +1,92 @@
 # AutoScribe
-Automated documentation and code analysis tool for GitHub repositories.
-[![GitHub issues](https://img.shields.io/github/issues/SudeshDahale/AutoScribe)](https://github.com/SudeshDahale/AutoScribe/issues)
-[![GitHub forks](https://img.shields.io/github/forks/SudeshDahale/AutoScribe)](https://github.com/SudeshDahale/AutoScribe/network)
-[![GitHub stars](https://img.shields.io/github/stars/SudeshDahale/AutoScribe)](https://github.com/SudeshDahale/AutoScribe/stargazers)
+![AutoScribe Logo](https://via.placeholder.com/200x100)
+Automated Code Documentation and Analysis Tool
+[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![GitHub Issues](https://img.shields.io/github/issues/SudeshDahale/AutoScribe)](https://github.com/SudeshDahale/AutoScribe/issues)
+[![GitHub Forks](https://img.shields.io/github/forks/SudeshDahale/AutoScribe)](https://github.com/SudeshDahale/AutoScribe/network/members)
+![Futuristic Cityscape](https://via.placeholder.com/800x400)
 
 ## Feature Highlights
-* Automated documentation generation for GitHub repositories
-* Code analysis and staleness detection
+* Automated code documentation generation
+* Incremental update of documentation
+* Staleness detection and reporting
+* GitHub repository analysis and statistics
+* API documentation generation
 * Support for multiple programming languages
-* Webhook integration for real-time updates
-* User authentication and authorization
+* Webhook integration for automated updates
+![Robot Writing Code](https://via.placeholder.com/400x200)
 
 ## Tech Stack
-| Technology | Description |
+| Technology | Version |
 | --- | --- |
-| Python | Backend programming language |
-| TypeScript | Frontend programming language |
-| GitHub API | Repository data source |
-| Webhooks | Real-time update mechanism |
-| Database | Data storage and management |
+| Python | 3.9+ |
+| TypeScript | 4.5+ |
+| React | 17.0+ |
+| Flask | 2.0+ |
+| SQLAlchemy | 1.4+ |
+| GitHub API | v3 |
 
 ## Project Structure
-The project is divided into two main components:
-* `backend`: Contains the server-side logic, including API endpoints, database interactions, and webhook handling.
-* `frontend`: Contains the client-side logic, including the user interface and API requests.
+```markdown
+backend/
+app/
+api/
+auth.py
+docs_gen.py
+health.py
+parse.py
+...
+core/
+config.py
+database.py
+doc_generator.py
+...
+models/
+analysis_job.py
+documentation.py
+file_snapshot.py
+...
+workers/
+tasks.py
+test/
+test_health.py
+test_incremental_update.py
+test_staleness.py
+...
+frontend/
+src/
+App.tsx
+constants.ts
+types.ts
+components/
+LoginPage.tsx
+PromptEditorModal.tsx
+...
+```
+![File System Hierarchy](https://via.placeholder.com/400x300)
 
 ## Quick-start Guide
 1. Clone the repository: `git clone https://github.com/SudeshDahale/AutoScribe.git`
-2. Install dependencies: `pip install -r requirements.txt` (backend) and `npm install` (frontend)
-3. Start the backend server: `python backend/app/main.py`
-4. Start the frontend server: `npm start`
-5. Access the application: `http://localhost:3000`
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run the application: `python backend/app/main.py`
+4. Access the web interface: `http://localhost:5000`
+![Rocket Launching](https://via.placeholder.com/400x200)
 
 ## API Overview
-The API provides the following endpoints:
-* `GET /api/health`: Health check endpoint
-* `POST /api/auth/github_login`: GitHub login endpoint
-* `POST /api/auth/github_callback`: GitHub callback endpoint
-* `GET /api/repositories`: Repository list endpoint
-* `POST /api/repositories`: Repository creation endpoint
-* `DELETE /api/repositories/:id`: Repository deletion endpoint
-* `GET /api/search`: Search endpoint
-* `POST /api/search`: Search query endpoint
-* `GET /api/staleness`: Staleness check endpoint
-* `POST /api/staleness`: Staleness update endpoint
-* `GET /api/webhooks`: Webhook status endpoint
-* `POST /api/webhooks`: Webhook configuration endpoint
+The API provides endpoints for the following functionality:
+* Authentication: `POST /api/auth/github_login`
+* Documentation generation: `POST /api/docs_gen/generate_docstrings`
+* Health check: `GET /api/health`
+* Repository analysis: `POST /api/parse/parse_repository`
+* Staleness detection: `POST /api/staleness/check_staleness`
+* Webhook integration: `POST /api/webhooks/configure_webhook`
+![API Gateway](https://via.placeholder.com/400x200)
 
 ## Contributing
-Contributions are welcome and appreciated. To contribute, please:
-1. Fork the repository
-2. Create a new branch for your feature or bug fix
-3. Submit a pull request with a clear description of your changes
-4. Ensure your code is formatted and tested according to the project's standards
+Contributions are welcome! Please submit a pull request with your changes and a brief description of the changes made.
+![Collaboration](https://via.placeholder.com/400x200)
 
 ## License
-AutoScribe is licensed under the [MIT License](https://github.com/SudeshDahale/AutoScribe/blob/main/LICENSE).
+AutoScribe is licensed under the Apache 2.0 license.
+![License Badge](https://via.placeholder.com/100x50)
