@@ -21,24 +21,35 @@
     --text-3: #5c5c70;
     --red: #ef4444;
     --orange: #f97316;
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.08);
+    --amber-border: rgba(245,158,11,0.25);
     color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
 
-  body {
-    margin: 0;
-    background: var(--surface);
-    color: var(--text-1);
-    font-family: 'DM Sans', system-ui, sans-serif;
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    /* dot-grid texture */
-    background-image: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
-    background-size: 24px 24px;
-  }
+/* ─── ADD THIS TO THE END OF index.css ─────────────────────────────────────
+   (or replace the body rule with the one below)                             */
+
+/* Stronger dot-grid background texture (replace the existing body rule)
+   The original had opacity 0.04 dots — bumped to 0.055 + added a subtle
+   radial gradient vignette to anchor the corners */
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text-1);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* dot-grid texture — slightly stronger than before */
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(163,230,53,0.035) 0%, transparent 60%),
+    radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px;
+}
 
   #root { min-height: 100vh; display: flex; flex-direction: column; }
 
