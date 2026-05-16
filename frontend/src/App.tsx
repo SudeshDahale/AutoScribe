@@ -508,6 +508,8 @@ function App() {
     onSecretChange: setWebhookSecret,
     onAutoRegenToggle: () => setWebhookAutoRegen(v => !v),
     onSave: handleSaveWebhook,
+    token: user?.access_token ?? '',
+    user,
   };
 
   return (
