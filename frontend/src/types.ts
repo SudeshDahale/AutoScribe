@@ -89,13 +89,14 @@ export interface WebhookStatus {
 }
 
 export interface PromptTemplate {
-  id: string;
+  id: number;
   name: string;
   description: string;
   doc_type: string;
   prompt: string;
-  variables: string[];
+  variables?: string[];
   category: string;
+  token_count?: number;
 }
 
 export interface EditHistoryEntry {
@@ -112,4 +113,12 @@ export interface ValidationResult {
   estimated_tokens: number;
 }
 
-export type RightPanel = "empty" | "parse" | "readme" | "docstrings" | "search" | "staleness" | "analytics" | "webhook";
+export type RightPanel =
+  | "empty"
+  | "parse"
+  | "readme"
+  | "docstrings"
+  | "search"
+  | "staleness"
+  | "analytics"
+  | "webhook";
