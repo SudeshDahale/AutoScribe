@@ -12,10 +12,10 @@ import type {
 import { LoginPage } from "./components/LoginPage";
 import { Topbar } from "./components/TopBar";
 import { SearchPanel } from "./components/panels/SearchPanel";
-import { PromptEditorModal } from "./components/PromptEditorModal";
+import { PromptsPage } from "./pages/PromptsPage";
 import { RepositoriesPage } from "./pages/RepositoriesPage";
 
-// ── Page stubs for Search and Prompts ────────────────────────────────────────
+// ── Search Page ───────────────────────────────────────────────────────────────
 
 function SearchPage(props: any) {
   return (
@@ -35,28 +35,6 @@ function SearchPage(props: any) {
         then answers in plain English with file-and-line citations.
       </p>
       <SearchPanel {...props} />
-    </div>
-  );
-}
-
-function PromptsPage(props: any) {
-  return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 32px' }}>
-      <p style={{
-        fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-3)',
-        letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8,
-      }}>
-        Prompts
-      </p>
-      <h1 style={{ fontSize: 48, fontFamily: 'Syne, sans-serif', fontWeight: 700, margin: '0 0 12px', lineHeight: 1.1 }}>
-        Make the model{' '}
-        <em style={{ color: 'var(--lime)', fontStyle: 'italic' }}>sound like your team.</em>
-      </h1>
-      <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 40 }}>
-        Prompts are versioned per project. Edit, preview against a real symbol from your
-        codebase, and ship — no deploy required.
-      </p>
-      <PromptEditorModal open={true} onClose={() => {}} {...props} />
     </div>
   );
 }
@@ -129,7 +107,6 @@ function App() {
   const [validating, setValidating] = useState(false);
   const [activePage, setActivePage] = useState<'repositories' | 'search' | 'prompts'>('repositories');
 
-  // Auth
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("access_token");
@@ -492,12 +469,9 @@ function App() {
 
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
-  // Shared props passed to all panels via RepositoriesPage / page stubs
   const sharedPanelProps = {
-    // parse
     parsing, parseError, parseResults, expandedFiles,
     onToggleFile: toggleFile, onGenerateDocstrings: handleGenerateDocstrings,
-    // readme
     generating: generatingReadme, error: readmeError, readme, copied,
     onCopy: handleCopy, onRegenerate: async (referenceText?: string) => {
       if (!user || !selectedRepo) return;
@@ -515,10 +489,8 @@ function App() {
       } catch { setReadmeError('Network error generating README.'); }
       finally { setGeneratingReadme(false); }
     },
-    // docstrings
     generating_docstrings: generatingDocstrings,
     docstringsError, docstrings, filePath: docstringsFile,
-    // search
     indexStats, indexing, indexError,
     searchMode, searchQuery, searching, searchResults, searchError,
     ragQuestion, ragAsking, ragAnswer, ragSources, ragError,
@@ -528,12 +500,9 @@ function App() {
     onSearch: handleSearch,
     onRagQuestionChange: setRagQuestion,
     onAsk: handleAsk,
-    // analytics
     loading: loadingAnalytics, analyticsError, analytics,
-    // staleness
     checking: checkingStale, stalenessError, report: stalenessReport,
     updating: updatingDocs, onUpdate: handleIncrementalUpdate,
-    // webhook
     webhookStatus, webhookSecret, webhookAutoRegen,
     saving: savingWebhook, saved: webhookSaved, webhookError,
     onSecretChange: setWebhookSecret,
