@@ -542,14 +542,40 @@ function App() {
             )}
 
             {rightPanel === "readme" && (
-              <ReadmePanel
-                generating={generatingReadme}
-                error={readmeError}
-                readme={readme}
-                copied={copied}
-                onCopy={handleCopy}
-              />
-            )}
+  <ReadmePanel
+    generating={generatingReadme}
+    error={readmeError}
+    readme={readme}
+    copied={copied}
+    onCopy={handleCopy}
+    repoId={selectedRepo?.id ?? null}
+    token={user?.access_token ?? ""}
+    onRegenerate={async (referenceText?: string) => {
+      if (!user || !selectedRepo) return;
+      setGeneratingReadme(true);
+      setReadmeError("");
+      try {
+        if (referenceText) {
+          const res = await fetch(`${API}/prompt-editor/generate-with-reference`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.access_token}` },
+            body: JSON.stringify({
+              repo_id: selectedRepo.id,
+              doc_type: "readme",
+              reference_text: referenceText,
+            }),
+          });
+          if (!res.ok) { setReadmeError("Failed to generate README with reference."); return; }
+          const data = await res.json();
+          setReadme(data.content);
+        } else {
+          await handleGenerateReadme();
+        }
+      } catch { setReadmeError("Network error generating README."); }
+      finally { setGeneratingReadme(false); }
+    }}
+  />
+)}
 
             {rightPanel === "docstrings" && (
               <DocstringsPanel
