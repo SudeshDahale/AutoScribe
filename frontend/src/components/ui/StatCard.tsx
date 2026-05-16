@@ -1,23 +1,23 @@
-export function StatCard({
-  icon, label, value, sub, trend,
-}: {
-  icon: string; label: string; value: string | number; sub?: string; trend?: "up" | "down" | "neutral";
-}) {
+interface Props {
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: boolean;
+}
+
+export function StatCard({ label, value, sub, accent }: Props) {
   return (
-    <div className="card p-5 flex items-start gap-4 hover:shadow-card-hover transition-shadow duration-200">
-      <div className="w-11 h-11 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-900/40 flex items-center justify-center text-xl flex-shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
-        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5 truncate">{sub}</p>}
-      </div>
-      {trend && (
-        <span className={`text-xs font-bold mt-1 ${trend === "up" ? "text-emerald-500" : trend === "down" ? "text-red-400" : "text-gray-400"}`}>
-          {trend === "up" ? "↑" : trend === "down" ? "↓" : "→"}
-        </span>
-      )}
+    <div style={{
+      background: 'var(--surface-2)', border: `1px solid ${accent ? 'var(--amber-border)' : 'var(--border)'}`,
+      borderRadius: 10, padding: '14px 16px',
+    }}>
+      <p style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, margin: '0 0 6px', fontFamily: 'DM Sans, sans-serif' }}>
+        {label}
+      </p>
+      <p style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Syne, sans-serif', color: accent ? 'var(--amber)' : 'var(--text-1)', margin: '0 0 2px', letterSpacing: '-0.03em' }}>
+        {value}
+      </p>
+      {sub && <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>{sub}</p>}
     </div>
   );
 }
