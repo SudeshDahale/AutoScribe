@@ -1,103 +1,177 @@
-# AutoScribe
-![AutoScribe Logo](https://imgur.com/8xY8F1E.png)
-Automated Documentation and Code Analysis Tool
-[![Build Status](https://img.shields.io/travis/SudeshDahale/AutoScribe/master)](https://travis-ci.org/SudeshDahale/AutoScribe)
-[![Code Coverage](https://img.shields.io/codecov/c/github/SudeshDahale/AutoScribe)](https://codecov.io/gh/SudeshDahale/AutoScribe)
-[![License](https://img.shields.io/github/license/SudeshDahale/AutoScribe)](https://github.com/SudeshDahale/AutoScribe/blob/master/LICENSE)
+# AutoScribe: AI-Powered Documentation Generator
 
-AutoScribe is an innovative tool designed to automate the process of generating documentation and analyzing code. With its cutting-edge technology, it simplifies the development process, making it easier for developers to focus on what matters most - writing high-quality code.
+![Cover Image](./assets/cover.png)
 
-![Futuristic Cityscape](https://source.unsplash.com/1600x900/?futuristic-cityscape)
+---
 
-## Feature Highlights
-* Automated documentation generation
-* Code analysis and parsing
-* Incremental updates and staleness detection
-* GitHub integration for seamless repository management
-* Webhook support for real-time updates
+## 🚀 Quick Start
 
-## Tech Stack
-| Technology | Description |
-| --- | --- |
-| Python | Primary programming language |
-| TypeScript | Frontend development language |
-| React | Frontend framework |
-| GitHub API | Repository management and integration |
-| Webhooks | Real-time update notifications |
+### Prerequisites
+- Python 3.8+
+- Node.js (v16+)
+- GitHub API Token
 
-## Project Structure
-```markdown
-backend/
-app/
-api/
-auth.py
-docs_gen.py
-health.py
-parse.py
-prompt_editor.py
-repositories.py
-search.py
-staleness.py
-webhooks.py
-core/
-config.py
-database.py
-doc_generator.py
-github_fetch.py
-incremental_updater.py
-parser.py
-rag.py
-staleness_detector.py
-models/
-analysis_job.py
-documentation.py
-file_snapshot.py
-parsed_file.py
-repository.py
-user.py
-webhook_config.py
-workers/
-tasks.py
-test/
-test_health.py
-test_incremental_update.py
-test_staleness.py
-frontend/
-src/
-App.tsx
-constants.ts
-types.ts
-components/
-LoginPage.tsx
-PromptEditorModal.tsx
-Sidebar.tsx
-StatsStrip.tsx
-TabBar.tsx
-TopBar.tsx
-panels/
-AnalyticsPanel.tsx
+---
+
+## ⚙️ Installation & Setup
+
+### 1. Backend Setup
+
+```bash
+cd backend
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+# Mac/Linux
+source venv/bin/activate
+
+pip install -r requirements.txt
 ```
 
-## Quick-start Guide
-1. Clone the repository: `git clone https://github.com/SudeshDahale/AutoScribe.git`
-2. Install dependencies: `pip install -r requirements.txt` (backend) and `npm install` (frontend)
-3. Start the backend server: `python backend/app/main.py`
-4. Start the frontend development server: `npm start`
+Create `.env` inside `backend/`:
 
-![Robot Coding](https://source.unsplash.com/1600x900/?robot-coding)
+```env
+GITHUB_API_TOKEN=your_api_token_here
 
-## API Overview
-The AutoScribe API provides endpoints for the following functionality:
-* Authentication: `POST /api/auth/github_login`
-* Documentation generation: `POST /api/docs_gen/generate_repo_readme`
-* Code analysis: `POST /api/parse/parse_repository`
-* Search: `GET /api/search/semantic_search`
-* Webhooks: `POST /api/webhooks/handle_github_webhook`
+# GitHub API settings
+GITHUB_API_URL=https://api.github.com
+GITHUB_API_USERNAME=your_github_username
 
-## Contributing
-Contributions are welcome and appreciated. To contribute, please fork the repository and submit a pull request with your changes.
+# Documentation settings
+DOC_GENERATION_MODE=auto
+DOC_OUTPUT_FORMAT=markdown
+```
 
-## License
-AutoScribe is licensed under the [MIT License](https://github.com/SudeshDahale/AutoScribe/blob/master/LICENSE).
+Start backend server:
 
-![Futuristic Space Station](https://source.unsplash.com/1600x900/?futuristic-space-station)
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+---
+
+### 2. Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will be available at `http://localhost:3000`
+
+---
+
+## 🧪 Running Tests
+
+```bash
+cd backend
+pytest tests/ -v
+```
+
+10 tests across incremental update, staleness detection, and documentation generation.
+
+---
+
+## 📁 Project Structure
+```
+AutoScribe/
+├── backend/
+│   ├── main.py
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── auth.py
+│   │   │   ├── docs_gen.py
+│   │   │   ├── health.py
+│   │   │   ├── parse.py
+│   │   │   ├── prompt_editor.py
+│   │   │   ├── repositories.py
+│   │   │   ├── search.py
+│   │   │   └── staleness.py
+│   │   ├── core/
+│   │   │   ├── config.py
+│   │   │   ├── database.py
+│   │   │   ├── doc_generator.py
+│   │   │   ├── github_fetch.py
+│   │   │   ├── incremental_updater.py
+│   │   │   ├── parser.py
+│   │   │   ├── rag.py
+│   │   │   └── staleness_detector.py
+│   │   ├── models/
+│   │   │   ├── analysis_job.py
+│   │   │   ├── documentation.py
+│   │   │   ├── file_snapshot.py
+│   │   │   ├── parsed_file.py
+│   │   │   ├── repository.py
+│   │   │   ├── user.py
+│   │   │   └── webhook_config.py
+│   │   └── workers/
+│   │       └── tasks.py
+│   ├── migrations/
+│   │   └── add_staleness_tables.py
+│   ├── test/
+│   │   ├── test_health.py
+│   │   ├── test_incremental_update.py
+│   │   └── test_staleness.py
+│   └── requirements.txt
+└── frontend/
+    ├── src/
+    │   ├── App.tsx
+    │   ├── components/
+    │   │   ├── LoginPage.tsx
+    │   │   ├── PromptEditorModal.tsx
+    │   │   ├── Sidebar.tsx
+    │   │   ├── StatsStrip.tsx
+    │   │   ├── TabBar.tsx
+    │   │   └── TopBar.tsx
+    │   ├── constants.ts
+    │   └── types.ts
+    ├── package.json
+    └── vite.config.js
+```
+---
+
+## 🏗️ System Architecture
+
+![AutoScribe Pipeline](./assets/autoscribe-pipeline.svg)
+
+### Pipeline
+
+1. User creates a **repository** and adds it to AutoScribe
+2. AutoScribe **parses** the repository and generates documentation (`docs_gen.py`)
+3. Documentation is **stored** in the database (`database.py`)
+4. User can **search** for specific documentation (`search.py`)
+5. AutoScribe **detects staleness** in the repository and updates documentation (`staleness.py`)
+6. User can **edit** documentation using the prompt editor (`prompt_editor.py`)
+7. AutoScribe **generates** new documentation based on user input (`docs_gen.py`)
+
+---
+
+## ✨ Features
+
+### Core Features
+- 📄 **Automatic documentation generation** — generates documentation for your repository
+- 🤖 **AI-powered documentation editing** — uses AI to assist with documentation editing
+- 🔍 **Search functionality** — search for specific documentation
+- 🧠 **Staleness detection** — detects when documentation is out of date
+- 🎯 **Incremental updates** — updates documentation incrementally
+
+### Repository Management
+- 📂 **Repository system** — manage multiple repositories
+- 🧠 **Multi-repository support** — supports multiple repositories simultaneously
+- 🗂️ **Repository management** — add, remove, and rename repositories
+- 📝 **Repository renaming** — update repository names on the fly
+- 🗑️ **Repository deletion** — remove repositories and associated documentation
+
+### Advanced UI Features
+- ⚡ **Streaming responses** — documentation reveals progressively with typing effect
+- 🔎 **Search highlighting** — click search results to highlight matching text
+- 🎨 **Modern SaaS UI** — polished interface with accent colors and smooth animations
+- 🌈 **Gradient design system** — works across desktop and mobile devices
+
+### AI-Powered Features
+- 💬 **Documentation suggestions** — suggests documentation based on user input
+- 📊 **Documentation comparison** — compare documentation across multiple repositories
+- 🔍 **Detailed documentation** — generates detailed documentation for specific topics
+- 📄 **Report generation** — generates reports based on documentation
