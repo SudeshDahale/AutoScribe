@@ -9,7 +9,6 @@ Every POLL_INTERVAL_MINUTES it:
 
 Starts automatically when the FastAPI app starts.
 """
-import asyncio
 import json
 import base64
 import logging
@@ -33,8 +32,8 @@ from app.core.staleness_detector import detect_stale_files
 logger = logging.getLogger("autoscribe.scheduler")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-POLL_INTERVAL_MINUTES = 60          # how often to re-check all repos
-AUTOSCRIBE_BRANCH     = "autoscribe/docs"   # single persistent branch
+POLL_INTERVAL_MINUTES = 60
+AUTOSCRIBE_BRANCH     = "autoscribe/docs"
 DOC_TYPE_TO_FILE = {
     "readme":       "README.md",
     "architecture": "docs/ARCHITECTURE.md",
@@ -49,6 +48,38 @@ _async_session = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=Fal
 
 # ── Scheduler singleton ───────────────────────────────────────────────────────
 scheduler = AsyncIOScheduler()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Style reference loader
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _load_style_reference(db: AsyncSession, repo_id: int, doc_type: str) -> str | None:
+    """
+    Load a saved style reference for (repo_id, doc_type) directly from an
+    already-open DB session. Returns the raw reference text or None.
+    Silently swallows errors so a missing reference never breaks generation.
+    """
+    try:
+        result = await db.execute(
+            select(Documentation).where(
+                Documentation.repo_id == repo_id,
+                Documentation.doc_type == f"style_reference:{doc_type}",
+            )
+        )
+        doc = result.scalar_one_or_none()
+        if doc:
+            data = json.loads(doc.content)
+            ref = data.get("reference_text", "").strip()
+            if ref:
+                logger.info(
+                    "  🎨 Style reference found for repo %d / %s (%d chars)",
+                    repo_id, doc_type, len(ref),
+                )
+                return ref
+    except Exception as e:
+        logger.warning("  ⚠️  Could not load style reference for %d/%s: %s", repo_id, doc_type, e)
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,7 +115,6 @@ async def _ensure_branch(client: httpx.AsyncClient, base_api: str, headers: dict
 async def _commit_file(client: httpx.AsyncClient, base_api: str, headers: dict,
                         file_path: str, content: str, commit_msg: str) -> bool:
     """Upsert a file on AUTOSCRIBE_BRANCH. Returns True on success."""
-    # Get existing file SHA (needed to update without 409)
     file_sha = None
     r = await client.get(
         f"{base_api}/contents/{file_path}?ref={AUTOSCRIBE_BRANCH}", headers=headers
@@ -119,8 +149,7 @@ async def _upsert_pr(client: httpx.AsyncClient, base_api: str, headers: dict,
         params={"state": "open", "head": f"{owner}:{AUTOSCRIBE_BRANCH}", "base": default_branch},
     )
     if r.status_code == 200 and r.json():
-        # PR already open — nothing to do
-        return
+        return  # PR already open — nothing to do
 
     ts = datetime.now(timezone.utc).isoformat()
     await client.post(
@@ -168,8 +197,12 @@ async def _update_repo(db: AsyncSession, repo: Repository, user: User) -> None:
     stale = await detect_stale_files(db, repo.id)
     stale_paths = {f["file_path"] for f in stale if f["status"] in ("new", "modified")}
 
+    # ── 3. Load style references once — reused for every generation call ──────
+    readme_style    = await _load_style_reference(db, repo.id, "readme")
+    docstring_style = await _load_style_reference(db, repo.id, "code_docs")
+
     async with httpx.AsyncClient(timeout=30) as client:
-        # ── 3. Ensure the persistent branch exists ────────────────────────────
+        # ── 4. Ensure the persistent branch exists ────────────────────────────
         ok = await _ensure_branch(client, base_api, headers, repo.default_branch)
         if not ok:
             logger.error("  ❌ Could not ensure branch for %s", repo.full_name)
@@ -177,42 +210,49 @@ async def _update_repo(db: AsyncSession, repo: Repository, user: User) -> None:
 
         committed_any = False
 
-        # ── 4. Regenerate README if anything is stale ─────────────────────────
-        if stale or True:   # always regenerate README on schedule
-            readme_content = generate_readme(repo.full_name, files_data)
+        # ── 5. Regenerate README (always on schedule; style ref auto-applied) ──
+        readme_content = generate_readme(
+            repo.full_name,
+            files_data,
+            repo_id=repo.id,
+            style_reference=readme_style,   # None → default prompt, str → mirrored format
+        )
 
-            # Update DB record
-            result = await db.execute(
-                select(Documentation).where(
-                    Documentation.repo_id == repo.id,
-                    Documentation.doc_type == "readme",
-                )
+        result = await db.execute(
+            select(Documentation).where(
+                Documentation.repo_id == repo.id,
+                Documentation.doc_type == "readme",
             )
-            doc = result.scalar_one_or_none()
-            if doc:
-                doc.content = readme_content
-            else:
-                doc = Documentation(repo_id=repo.id, doc_type="readme", content=readme_content)
-                db.add(doc)
+        )
+        doc = result.scalar_one_or_none()
+        if doc:
+            doc.content = readme_content
+        else:
+            doc = Documentation(repo_id=repo.id, doc_type="readme", content=readme_content)
+            db.add(doc)
 
-            # Push to GitHub
-            ok = await _commit_file(
-                client, base_api, headers,
-                "README.md",
-                readme_content,
-                f"docs(autoscribe): refresh README [{ts}]",
-            )
-            committed_any = committed_any or ok
+        ok = await _commit_file(
+            client, base_api, headers,
+            "README.md",
+            readme_content,
+            f"docs(autoscribe): refresh README [{ts}]"
+            + (" [styled]" if readme_style else ""),
+        )
+        committed_any = committed_any or ok
 
-        # ── 5. Regenerate docstrings for stale files ──────────────────────────
+        # ── 6. Regenerate docstrings for stale files (style ref auto-applied) ──
         for pf in parsed_files:
             if pf.file_path not in stale_paths:
                 continue
 
             symbols = json.loads(pf.symbols)
-            docstrings_json = generate_file_docstrings(pf.file_path, pf.language, symbols)
+            docstrings_json = generate_file_docstrings(
+                pf.file_path,
+                pf.language,
+                symbols,
+                style_reference=docstring_style,  # None → default, str → mirrored format
+            )
 
-            # Update DB record
             doc_type_key = f"docstrings:{pf.file_path}"
             result = await db.execute(
                 select(Documentation).where(
@@ -229,20 +269,20 @@ async def _update_repo(db: AsyncSession, repo: Repository, user: User) -> None:
                 )
                 db.add(doc)
 
-            # Push to GitHub
             gh_file = f"docs/code/{pf.file_path.replace('/', '_')}_docs.md"
             docstring_md = f"# Docstrings: `{pf.file_path}`\n\n```json\n{docstrings_json}\n```\n"
             ok = await _commit_file(
                 client, base_api, headers,
                 gh_file,
                 docstring_md,
-                f"docs(autoscribe): update docstrings for {pf.file_path} [{ts}]",
+                f"docs(autoscribe): update docstrings for {pf.file_path} [{ts}]"
+                + (" [styled]" if docstring_style else ""),
             )
             committed_any = committed_any or ok
 
         await db.commit()
 
-        # ── 6. Ensure a PR exists so everything is reviewable ─────────────────
+        # ── 7. Ensure a PR exists so everything is reviewable ─────────────────
         if committed_any:
             await _upsert_pr(client, base_api, headers, repo.full_name, repo.default_branch)
             logger.info("  ✅ Done — committed updates for %s", repo.full_name)
@@ -259,7 +299,6 @@ async def _run_all_repos() -> None:
     logger.info("⏰ Scheduler tick — scanning all repos")
     async with _async_session() as db:
         try:
-            # Find all repos that have auto_regenerate enabled
             result = await db.execute(
                 select(Repository, WebhookConfig)
                 .join(WebhookConfig, WebhookConfig.repo_id == Repository.id, isouter=True)
@@ -267,12 +306,9 @@ async def _run_all_repos() -> None:
             rows = result.all()
 
             for repo, wh_config in rows:
-                # Skip repos without auto_regenerate (or no webhook config yet)
                 if wh_config and not wh_config.auto_regenerate:
                     continue
-                # If no webhook config at all, still run (opt-in by default)
 
-                # Load the owner user
                 user_result = await db.execute(
                     select(User).where(User.id == repo.user_id)
                 )
@@ -303,7 +339,7 @@ def start_scheduler() -> None:
         minutes=POLL_INTERVAL_MINUTES,
         id="autoscribe_poll",
         replace_existing=True,
-        next_run_time=datetime.now(timezone.utc),  # run immediately on startup too
+        next_run_time=datetime.now(timezone.utc),
     )
     scheduler.start()
     logger.info(
