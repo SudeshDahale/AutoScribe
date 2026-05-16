@@ -1,102 +1,112 @@
 import type { User } from "../types";
 
+type NavPage = "repositories" | "search" | "prompts";
+
 interface Props {
   user: User;
-  sidebarOpen: boolean;
-  selectedRepo: { full_name: string } | null;
-  onToggleSidebar: () => void;
-  onOpenPromptEditor: () => void;
+  activePage: NavPage;
+  onNavigate: (page: NavPage) => void;
   onLogout: () => void;
 }
 
-export function Topbar({ user, sidebarOpen, selectedRepo, onToggleSidebar, onOpenPromptEditor, onLogout }: Props) {
+export function Topbar({ user, activePage, onNavigate, onLogout }: Props) {
   return (
     <header style={{
       height: 52,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 16px',
+      padding: '0 24px',
       borderBottom: '1px solid var(--border)',
-      background: 'rgba(17,17,24,0.92)',
+      background: 'rgba(17,17,20,0.94)',
       backdropFilter: 'blur(12px)',
       position: 'sticky', top: 0, zIndex: 40,
       flexShrink: 0,
     }}>
-      {/* Left */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button
-          onClick={onToggleSidebar}
-          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          style={{
-            width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
-            background: 'transparent', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-2)', transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; }}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 4h12v1.5H2V4zm0 3.25h12v1.5H2v-1.5zM2 10.5h12V12H2v-1.5z" />
-          </svg>
-        </button>
-
+      {/* Logo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 7,
-            background: 'var(--amber)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0a0a10" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-          </div>
-          <span style={{ fontFamily: 'Syne, sans-serif', fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-1)' }}>
-            AutoScribe
+          {/* Wavy logo mark */}
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+            <rect width="26" height="26" rx="7" fill="var(--lime)" />
+            <path d="M5 13 Q7 9 9 13 Q11 17 13 13 Q15 9 17 13 Q19 17 21 13"
+              stroke="#0a0f02" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          </svg>
+          <span style={{ fontFamily: 'Syne, sans-serif', fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-1)' }}>
+            Auto<span style={{ color: 'var(--lime)', fontStyle: 'italic' }}>Scribe</span>
           </span>
-          <span className="pill-amber" style={{ marginLeft: 2 }}>beta</span>
         </div>
+
+        {/* Nav links */}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {(['repositories', 'search', 'prompts'] as NavPage[]).map(page => {
+            const label = page.charAt(0).toUpperCase() + page.slice(1);
+            const isActive = activePage === page;
+            return (
+              <button
+                key={page}
+                onClick={() => onNavigate(page)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 8,
+                  border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+                  background: isActive ? 'var(--surface-3)' : 'transparent',
+                  color: isActive ? 'var(--text-1)' : 'var(--text-2)',
+                  fontFamily: 'DM Sans, sans-serif',
+                  fontSize: 14,
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = 'var(--text-1)'; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--text-2)'; }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Right */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            if (!selectedRepo) { alert('Select a repository first'); return; }
-            onOpenPromptEditor();
-          }}
-          style={{ display: window.innerWidth < 640 ? 'none' : 'inline-flex' }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="m18.5 2.5 2 2L12 13H10v-2z"/>
-          </svg>
-          Prompt Editor
-        </button>
-
-        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img
-            src={user.avatar_url} alt="avatar"
-            style={{ width: 28, height: 28, borderRadius: '50%', border: '1.5px solid var(--border-hover)' }}
-          />
-          <span style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 500, display: window.innerWidth < 640 ? 'none' : 'block' }}>
-            {user.username}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Scheduler live */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', borderRadius: 6,
+          border: '1px solid var(--border)',
+          background: 'var(--surface-3)',
+        }}>
+          <span className="dot-lime" style={{ animation: 'pulse 2s infinite' }} />
+          <span style={{ fontSize: 11, fontFamily: 'DM Mono, monospace', color: 'var(--text-2)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Scheduler Live
           </span>
         </div>
 
-        <button
-          className="btn-ghost"
+        {/* User */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'DM Sans, sans-serif' }}>signed in as</span>
+          <span style={{ fontSize: 13, color: 'var(--text-1)', fontWeight: 600, fontFamily: 'DM Mono, monospace' }}>@{user.username}</span>
+        </div>
+        <div
           onClick={onLogout}
-          style={{ color: 'var(--text-3)' }}
+          title="Sign out"
+          style={{ cursor: 'pointer' }}
         >
-          Sign out
-        </button>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            background: 'var(--lime)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: '#0a0f02',
+            overflow: 'hidden',
+          }}>
+            {user.avatar_url
+              ? <img src={user.avatar_url} alt={user.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : user.username[0].toUpperCase()
+            }
+          </div>
+        </div>
       </div>
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }`}</style>
     </header>
   );
 }
