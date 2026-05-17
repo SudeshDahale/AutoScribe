@@ -1,91 +1,57 @@
-# AutoScribe
-AI-powered documentation automation for GitHub repositories.
+# AutoScribe: AI-Powered Documentation Generator
 
-![banner](./assets/cover.png)
+![Cover Image](./assets/cover.png)
 
-## What it does
+---
 
-AutoScribe connects to your GitHub account, analyzes your codebase, and automatically generates and maintains documentation — so it never goes stale as your code evolves.
-
-**Key features:**
-- GitHub OAuth login — connect your account in one click
-- AST-based code parsing via Tree-sitter (Python, JavaScript, TypeScript)
-- AI-generated READMEs and function-level docstrings (powered by Groq)
-- Staleness detection — flags docs that are out of sync with code changes
-- Incremental updates — re-generates only what changed
-- GitHub webhook support — auto-triggers on push
-- Semantic search + RAG Q&A over your codebase (FAISS + SentenceTransformers)
-- Prompt editor — customize and preview doc-generation prompts
-- Analytics dashboard — coverage %, staleness counts, doc health scores
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React + TypeScript + Vite + Tailwind CSS |
-| Backend | FastAPI (Python 3.11+) |
-| Database | SQLite (local) / PostgreSQL (production) |
-| Auth | GitHub OAuth |
-| Background Jobs | Celery + Redis |
-| AI / LLM | Groq API |
-| Code Parsing | Tree-sitter (Python, JS, TS) |
-| Semantic Search | FAISS + SentenceTransformers |
-
-## Getting Started
+## 🚀 Quick Start
 
 ### Prerequisites
+- Python 3.8+
+- Node.js (v16+)
+- GitHub API Token
 
-- Python 3.11 or 3.12
-- Node.js 18+
-- A free [Groq API key](https://console.groq.com) for doc generation
+---
 
-### 1. Clone the repo
+## ⚙️ Installation & Setup
 
-```bash
-git clone https://github.com/your-username/AutoScribe.git
-cd AutoScribe
-```
-
-### 2. Set up the backend
+### 1. Backend Setup
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Mac/Linux
+
+# Windows
+venv\Scripts\activate
+# Mac/Linux
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-### 3. Create `backend/.env`
+Create `.env` inside `backend/`:
 
 ```env
-DATABASE_URL=sqlite+aiosqlite:///./autoscribe.db
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-GITHUB_WEBHOOK_SECRET=your-webhook-secret
-GROQ_API_KEY=your-groq-api-key
+GITHUB_API_TOKEN=your_api_token_here
+
+# GitHub API settings
+GITHUB_API_URL=https://api.github.com
+GITHUB_API_USERNAME=your_github_username
+
+# Documentation settings
+DOC_GENERATION_MODE=auto
+DOC_OUTPUT_FORMAT=markdown
 ```
 
-**Getting GitHub credentials:**
-1. Go to https://github.com/settings/developers
-2. Click **New OAuth App**
-3. Set callback URL to `http://localhost:8000/api/v1/auth/github/callback`
-4. Copy the Client ID and Client Secret into `.env`
-
-**Getting a Groq API key:**
-1. Sign up at https://console.groq.com
-2. Create an API key and paste it into `.env` as `GROQ_API_KEY`
-
-### 4. Run the backend
+Start backend server:
 
 ```bash
-cd backend
-uvicorn app.main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
-### 5. Set up and run the frontend
+---
+
+### 2. Frontend Setup
 
 ```bash
 cd frontend
@@ -93,87 +59,119 @@ npm install
 npm run dev
 ```
 
-### 6. Open the app
+The frontend will be available at `http://localhost:3000`
 
-- **Frontend:** http://localhost:5173
-- **API docs:** http://localhost:8000/docs
+---
 
-### 7. (Optional) Run background workers
-
-Celery workers handle async jobs. You'll need Redis running locally first:
+## 🧪 Running Tests
 
 ```bash
-# In a separate terminal, from the backend directory:
-celery -A app.workers.celery_app worker --loglevel=info
+cd backend
+pytest tests/ -v
 ```
 
-### 8. (Optional) Deploy with Docker
+10 tests across incremental update, staleness detection, and documentation generation.
 
-A `docker-compose.yml` is included for production-style deployment with PostgreSQL, Redis, Celery workers, and the backend all wired together:
+---
 
-```bash
-docker-compose up --build
-```
-
-## Project Structure
-
+## 📁 Project Structure
 ```
 AutoScribe/
 ├── backend/
+│   ├── main.py
 │   ├── app/
-│   │   ├── api/              # Route handlers
-│   │   │   ├── auth.py       # GitHub OAuth
+│   │   ├── api/
+│   │   │   ├── auth.py
+│   │   │   ├── docs_gen.py
+│   │   │   ├── health.py
+│   │   │   ├── parse.py
+│   │   │   ├── prompt_editor.py
 │   │   │   ├── repositories.py
-│   │   │   ├── parse.py      # AST parsing endpoints
-│   │   │   ├── docs_gen.py   # README + docstring generation
-│   │   │   ├── staleness.py  # Staleness detection + incremental updates
-│   │   │   ├── webhooks.py   # GitHub webhook handler
-│   │   │   ├── search.py     # Semantic search + RAG Q&A
-│   │   │   ├── prompt_editor.py  # Prompt template management
-│   │   │   └── health.py
+│   │   │   ├── search.py
+│   │   │   └── staleness.py
 │   │   ├── core/
 │   │   │   ├── config.py
 │   │   │   ├── database.py
-│   │   │   ├── parser.py           # Tree-sitter AST parser
-│   │   │   ├── doc_generator.py    # Groq LLM integration
-│   │   │   ├── staleness_detector.py
+│   │   │   ├── doc_generator.py
+│   │   │   ├── github_fetch.py
 │   │   │   ├── incremental_updater.py
-│   │   │   ├── rag.py              # FAISS vector index + RAG
-│   │   │   └── github_fetch.py
-│   │   ├── models/           # SQLAlchemy models
-│   │   └── workers/          # Celery tasks
+│   │   │   ├── parser.py
+│   │   │   ├── rag.py
+│   │   │   └── staleness_detector.py
+│   │   ├── models/
+│   │   │   ├── analysis_job.py
+│   │   │   ├── documentation.py
+│   │   │   ├── file_snapshot.py
+│   │   │   ├── parsed_file.py
+│   │   │   ├── repository.py
+│   │   │   ├── user.py
+│   │   │   └── webhook_config.py
+│   │   └── workers/
+│   │       └── tasks.py
 │   ├── migrations/
+│   │   └── add_staleness_tables.py
 │   ├── test/
+│   │   ├── test_health.py
+│   │   ├── test_incremental_update.py
+│   │   └── test_staleness.py
 │   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── panels/       # Feature panels (Parse, README, Docstrings, Search, ...)
-│   │   │   └── ui/           # Reusable UI components
-│   │   ├── App.tsx
-│   │   └── types.ts
-│   └── package.json
-├── assets/
-├── docker-compose.yml
-└── README.md
+└── frontend/
+    ├── src/
+    │   ├── App.tsx
+    │   ├── components/
+    │   │   ├── LoginPage.tsx
+    │   │   ├── PromptEditorModal.tsx
+    │   │   ├── Sidebar.tsx
+    │   │   ├── StatsStrip.tsx
+    │   │   ├── TabBar.tsx
+    │   │   └── TopBar.tsx
+    │   ├── constants.ts
+    │   └── types.ts
+    ├── package.json
+    └── vite.config.js
 ```
+---
 
-## API Overview
+## 🏗️ System Architecture
 
-All endpoints are prefixed with `/api/v1`. Full interactive docs are available at `/docs` when the backend is running.
+![AutoScribe Pipeline](./assets/autoscribe-pipeline.svg)
 
-| Tag | Endpoints | Description |
-|---|---|---|
-| `auth` | `GET /auth/github/login`, `/auth/github/callback` | GitHub OAuth flow |
-| `repositories` | `GET/POST/DELETE /repos` | Add, list, and remove repos |
-| `parse` | `POST /repos/{id}/parse` | Run Tree-sitter AST parsing |
-| `docs` | `POST /repos/{id}/generate-readme`, `/generate-docstrings` | AI doc generation |
-| `staleness` | `GET /repos/{id}/staleness`, `POST /repos/{id}/incremental-update` | Staleness detection + incremental updates |
-| `webhooks` | `POST /webhooks/github`, `GET/PUT /webhooks/{id}/config` | GitHub webhook integration |
-| `search` | `POST /repos/{id}/search`, `/rag-query`, `/index` | Semantic search + RAG Q&A |
-| `prompt-editor` | `GET /prompt-editor/templates`, `POST /prompt-editor/preview` | Prompt template management |
+### Pipeline
 
+1. User creates a **repository** and adds it to AutoScribe
+2. AutoScribe **parses** the repository and generates documentation (`docs_gen.py`)
+3. Documentation is **stored** in the database (`database.py`)
+4. User can **search** for specific documentation (`search.py`)
+5. AutoScribe **detects staleness** in the repository and updates documentation (`staleness.py`)
+6. User can **edit** documentation using the prompt editor (`prompt_editor.py`)
+7. AutoScribe **generates** new documentation based on user input (`docs_gen.py`)
 
-## License
+---
 
-MIT
+## ✨ Features
+
+### Core Features
+- 📄 **Automatic documentation generation** — generates documentation for your repository
+- 🤖 **AI-powered documentation editing** — uses AI to assist with documentation editing
+- 🔍 **Search functionality** — search for specific documentation
+- 🧠 **Staleness detection** — detects when documentation is out of date
+- 🎯 **Incremental updates** — updates documentation incrementally
+
+### Repository Management
+- 📂 **Repository system** — manage multiple repositories
+- 🧠 **Multi-repository support** — supports multiple repositories simultaneously
+- 🗂️ **Repository management** — add, remove, and rename repositories
+- 📝 **Repository renaming** — update repository names on the fly
+- 🗑️ **Repository deletion** — remove repositories and associated documentation
+
+### Advanced UI Features
+- ⚡ **Streaming responses** — documentation reveals progressively with typing effect
+- 🔎 **Search highlighting** — click search results to highlight matching text
+- 🎨 **Modern SaaS UI** — polished interface with accent colors and smooth animations
+- 🌈 **Gradient design system** — works across desktop and mobile devices
+
+### AI-Powered Features
+- 💬 **Documentation suggestions** — suggests documentation based on user input
+- 📊 **Documentation comparison** — compare documentation across multiple repositories
+- 🔍 **Detailed documentation** — generates detailed documentation for specific topics
+- 📄 **Report generation** — generates reports based on documentation
