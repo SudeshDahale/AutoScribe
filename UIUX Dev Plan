@@ -1,0 +1,527 @@
+# AutoScribe Product Refinement Roadmap
+
+This roadmap assumes:
+
+* You are solo-building
+* You already have MVP functionality
+* Goal = make it feel like a real AI SaaS product
+* Focus = UX + product quality, not feature quantity
+
+---
+
+# Sprint 1 — UX Foundation Cleanup
+
+## Duration: 5–7 days
+
+## Goal
+
+Reduce chaos and make the UI feel structured.
+
+---
+
+## Tasks
+
+### Frontend Architecture
+
+* Remove massive inline styles
+* Move to Tailwind consistently
+* Create reusable UI primitives:
+
+  * Button
+  * Card
+  * Modal
+  * Input
+  * StatusBadge
+  * SectionHeader
+
+---
+
+### Layout Cleanup
+
+* Reduce border overuse
+* Improve spacing hierarchy
+* Add consistent padding system
+* Improve typography scale
+
+---
+
+### Dashboard Simplification
+
+Reduce visible complexity:
+
+* move advanced tools lower
+* emphasize primary workflow
+* reduce visual noise
+
+---
+
+### Responsive Fixes
+
+Test:
+
+* mobile
+* tablet
+* laptop
+
+Fix:
+
+* sidebar collapse
+* button wrapping
+* overflow
+* modal sizing
+
+---
+
+## Deliverable
+
+At the end of Sprint 1:
+
+* UI feels cleaner
+* app feels calmer
+* codebase becomes maintainable
+
+---
+
+# Sprint 2 — Workflow & Onboarding
+
+## Duration: 5–7 days
+
+## Goal
+
+Make users instantly understand the product.
+
+---
+
+## Tasks
+
+### Create Guided Flow
+
+Implement:
+
+```text
+Connect Repo
+→ Analyze
+→ Generate Docs
+→ Review
+→ Enable Automation
+```
+
+---
+
+### First-Time User Experience
+
+Build:
+
+* welcome screen
+* onboarding states
+* empty states
+* progress indicators
+
+---
+
+### Improve Repo Creation UX
+
+When repo added:
+
+* fetch metadata automatically
+* detect language/framework
+* show repo summary
+* suggest next action
+
+---
+
+### Contextual Navigation
+
+Instead of generic tools:
+
+* Search inside repo
+* Analytics for repo
+* Docs for repo
+
+Everything should feel repo-centric.
+
+---
+
+## Deliverable
+
+At the end of Sprint 2:
+
+* users know what to do immediately
+* product feels more guided
+* less cognitive overload
+
+---
+
+# Sprint 3 — AI Experience Layer
+
+## Duration: 7–10 days
+
+## Goal
+
+Make the AI feel intelligent and alive.
+
+---
+
+## Tasks
+
+### AI Progress System
+
+Replace generic loaders with staged progress:
+
+```text
+Scanning repository...
+Analyzing architecture...
+Generating README...
+Creating API docs...
+Opening PR...
+```
+
+---
+
+### Add Activity Timeline
+
+Show:
+
+* recent generations
+* sync history
+* commits analyzed
+* docs updated
+
+---
+
+### Add Background Status Indicators
+
+Examples:
+
+* monitoring repo
+* indexing code
+* webhook active
+* sync healthy
+
+---
+
+### Add Toast/Feedback System
+
+Success:
+
+* Docs generated
+* PR opened
+* Sync complete
+
+Failure:
+
+* GitHub rate limit
+* webhook failed
+* parse issue
+
+---
+
+### Skeleton Loading States
+
+For:
+
+* analytics
+* repo loading
+* search results
+* AI generation
+
+---
+
+## Deliverable
+
+At the end of Sprint 3:
+
+* AI feels alive
+* app feels premium
+* workflows feel smoother
+
+---
+
+# Sprint 4 — Autonomous Automation
+
+## Duration: 7–14 days
+
+## Goal
+
+Transform AutoScribe from tool → autonomous system.
+
+---
+
+## Tasks
+
+### Automatic Repo Monitoring
+
+Detect:
+
+* pushes
+* PRs
+* branch updates
+
+---
+
+### Background Documentation Sync
+
+When code changes:
+
+* detect affected files
+* regenerate docs
+* create/update PR automatically
+
+---
+
+### Smart Change Detection
+
+Avoid regenerating everything.
+
+Only update:
+
+* changed modules
+* affected README sections
+* impacted APIs
+
+---
+
+### Automation Dashboard
+
+Create dedicated area:
+
+```text
+Automation Status
+- Monitoring active
+- Last sync: 2m ago
+- PRs opened: 4
+- Docs freshness: 92%
+```
+
+---
+
+### Automation Controls
+
+User can:
+
+* pause sync
+* set branch rules
+* enable auto-PR
+* configure doc strategy
+
+---
+
+## Deliverable
+
+At the end of Sprint 4:
+
+* product becomes differentiated
+* feels like infrastructure
+* stronger startup positioning
+
+---
+
+# Sprint 5 — Product Polish
+
+## Duration: 5–7 days
+
+## Goal
+
+Make the product emotionally polished.
+
+---
+
+## Tasks
+
+### Motion & Transitions
+
+Add subtle:
+
+* page transitions
+* hover states
+* progress animations
+* modal animations
+
+---
+
+### Premium UX Details
+
+Add:
+
+* command palette
+* keyboard shortcuts
+* repo quick switcher
+* recent activity feed
+
+---
+
+### Better Analytics Storytelling
+
+Instead of raw charts:
+show insights.
+
+Examples:
+
+* README coverage increased 14%
+* stale docs detected
+* undocumented modules found
+
+---
+
+### Branding Consistency
+
+Refine:
+
+* iconography
+* typography
+* gradients
+* spacing
+* empty illustrations
+
+---
+
+## Deliverable
+
+At the end of Sprint 5:
+
+* app feels startup-grade
+* emotionally polished
+* memorable UX
+
+---
+
+# Sprint 6 — Launch Readiness
+
+## Duration: 5–10 days
+
+## Goal
+
+Prepare for real users.
+
+---
+
+## Tasks
+
+### Landing Page
+
+Build:
+
+* clear positioning
+* feature explanation
+* screenshots
+* workflow demo
+
+---
+
+### Error Handling
+
+Handle:
+
+* failed GitHub auth
+* invalid repo
+* generation failures
+* webhook issues
+
+---
+
+### Performance
+
+Optimize:
+
+* rerenders
+* API calls
+* loading speed
+* caching
+
+---
+
+### User Trust
+
+Add:
+
+* logs
+* audit history
+* sync transparency
+* AI explanation visibility
+
+---
+
+### Basic Usage Analytics
+
+Track:
+
+* repos connected
+* docs generated
+* user retention
+* most used features
+
+---
+
+## Deliverable
+
+At the end of Sprint 6:
+
+* ready for beta users
+* ready for portfolio/demo
+* ready for indie launch
+
+---
+
+# Recommended Priority Order
+
+| Priority               | Sprint   |
+| ---------------------- | -------- |
+| Critical               | Sprint 1 |
+| Critical               | Sprint 2 |
+| Very Important         | Sprint 3 |
+| Biggest Differentiator | Sprint 4 |
+| Polish                 | Sprint 5 |
+| Launch                 | Sprint 6 |
+
+---
+
+# What NOT To Do Right Now
+
+Avoid:
+
+* adding random AI features
+* building too many charts
+* excessive customization
+* enterprise settings
+* multi-tenant complexity
+* overengineering auth/billing
+
+---
+
+# The Main Product Strategy
+
+## Your advantage is NOT:
+
+```text
+“we generate docs”
+```
+
+Many tools do that.
+
+---
+
+## Your advantage should become:
+
+```text
+“documentation stays updated automatically”
+```
+
+That’s the real startup opportunity.
+
+---
+
+# Final Product Direction
+
+You should evolve AutoScribe into:
+
+```text
+AI-powered documentation infrastructure for GitHub repositories
+```
+
+NOT:
+
+```text
+documentation generator app
+```
+
+That positioning is much stronger.
