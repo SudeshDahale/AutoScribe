@@ -391,11 +391,3 @@ pip install -r requirements.txt --force-reinstall
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
-
-- [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for AST parsing
-- [Groq](https://groq.com/) for fast LLM inference
-- [FastAPI](https://fastapi.tiangolo.com/) for the excellent Python framework
-- [FAISS](https://github.com/facebookresearch/faiss) for efficient similarity search
-
----
