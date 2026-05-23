@@ -366,18 +366,6 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-### Running Tests
-
-```bash
-# Backend tests
-cd backend
-pytest
-
-# Frontend tests
-cd frontend
-npm test
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -403,11 +391,3 @@ pip install -r requirements.txt --force-reinstall
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
-
-- [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for AST parsing
-- [Groq](https://groq.com/) for fast LLM inference
-- [FastAPI](https://fastapi.tiangolo.com/) for the excellent Python framework
-- [FAISS](https://github.com/facebookresearch/faiss) for efficient similarity search
-
----
