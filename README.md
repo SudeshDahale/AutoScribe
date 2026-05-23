@@ -1,4 +1,4 @@
-# AutoScribe: AI-Powered Documentation Generator
+# AutoScribe: AI-Powered Documentation Generation
 
 ![Cover Image](./assets/cover.png)
 
@@ -34,13 +34,15 @@ Create `.env` inside `backend/`:
 ```env
 GITHUB_API_TOKEN=your_api_token_here
 
-# GitHub API settings
-GITHUB_API_URL=https://api.github.com
-GITHUB_API_USERNAME=your_github_username
+# Models
+DOC_GENERATION_MODEL=transformer-based
 
-# Documentation settings
-DOC_GENERATION_MODE=auto
-DOC_OUTPUT_FORMAT=markdown
+# Storage
+STORAGE_BASE=storage
+
+# Repository settings
+REPO_OWNER=SudeshDahale
+REPO_NAME=AutoScribe
 ```
 
 Start backend server:
@@ -70,7 +72,7 @@ cd backend
 pytest tests/ -v
 ```
 
-10 tests across incremental update, staleness detection, and documentation generation.
+10 tests across repository parsing, documentation generation, and API endpoints.
 
 ---
 
@@ -88,7 +90,8 @@ AutoScribe/
 │   │   │   ├── prompt_editor.py
 │   │   │   ├── repositories.py
 │   │   │   ├── search.py
-│   │   │   └── staleness.py
+│   │   │   ├── staleness.py
+│   │   │   └── webhooks.py
 │   │   ├── core/
 │   │   │   ├── config.py
 │   │   │   ├── database.py
@@ -97,6 +100,7 @@ AutoScribe/
 │   │   │   ├── incremental_updater.py
 │   │   │   ├── parser.py
 │   │   │   ├── rag.py
+│   │   │   ├── scheduler.py
 │   │   │   └── staleness_detector.py
 │   │   ├── models/
 │   │   │   ├── analysis_job.py
@@ -110,10 +114,10 @@ AutoScribe/
 │   │       └── tasks.py
 │   ├── migrations/
 │   │   └── add_staleness_tables.py
-│   ├── test/
-│   │   ├── test_health.py
+│   ├── tests/
 │   │   ├── test_incremental_update.py
-│   │   └── test_staleness.py
+│   │   ├── test_staleness.py
+│   │   └── test_health.py
 │   └── requirements.txt
 └── frontend/
     ├── src/
@@ -138,40 +142,33 @@ AutoScribe/
 
 ### Pipeline
 
-1. User creates a **repository** and adds it to AutoScribe
-2. AutoScribe **parses** the repository and generates documentation (`docs_gen.py`)
-3. Documentation is **stored** in the database (`database.py`)
-4. User can **search** for specific documentation (`search.py`)
-5. AutoScribe **detects staleness** in the repository and updates documentation (`staleness.py`)
-6. User can **edit** documentation using the prompt editor (`prompt_editor.py`)
-7. AutoScribe **generates** new documentation based on user input (`docs_gen.py`)
+1. User authenticates with GitHub and grants repository access
+2. AutoScribe fetches repository data and generates documentation (`docs_gen.py`)
+3. Documentation is stored in the database and made available via API endpoints (`api/docs_gen.py`)
+4. User can search and filter documentation using the search bar (`search.py`)
+5. AutoScribe continuously monitors repository staleness and triggers updates (`staleness.py`)
+6. Updates are processed in the background using Celery workers (`workers/tasks.py`)
+7. User can view repository analytics and documentation metrics (`repositories.py`)
 
 ---
 
 ## ✨ Features
 
 ### Core Features
-- 📄 **Automatic documentation generation** — generates documentation for your repository
-- 🤖 **AI-powered documentation editing** — uses AI to assist with documentation editing
-- 🔍 **Search functionality** — search for specific documentation
-- 🧠 **Staleness detection** — detects when documentation is out of date
-- 🎯 **Incremental updates** — updates documentation incrementally
+- 📄 **Automated documentation generation** — generates high-quality documentation for your repository
+- 🤖 **AI-powered search** — search and filter documentation using natural language queries
+- 📊 **Repository analytics** — view metrics and insights about your repository
+- 📝 **Customizable documentation** — customize the appearance and content of your documentation
+- 📈 **Continuous integration** — AutoScribe continuously monitors and updates your documentation
 
-### Repository Management
-- 📂 **Repository system** — manage multiple repositories
-- 🧠 **Multi-repository support** — supports multiple repositories simultaneously
-- 🗂️ **Repository management** — add, remove, and rename repositories
-- 📝 **Repository renaming** — update repository names on the fly
-- 🗑️ **Repository deletion** — remove repositories and associated documentation
+### Advanced Features
+- 📁 **Multi-repository support** — manage and generate documentation for multiple repositories
+- 📊 **Detailed analytics** — view detailed metrics and insights about your repository
+- 📝 **Collaboration tools** — collaborate with others on documentation and repository management
+- 📈 **Webhook integration** — integrate AutoScribe with your existing workflow using webhooks
 
-### Advanced UI Features
-- ⚡ **Streaming responses** — documentation reveals progressively with typing effect
-- 🔎 **Search highlighting** — click search results to highlight matching text
-- 🎨 **Modern SaaS UI** — polished interface with accent colors and smooth animations
-- 🌈 **Gradient design system** — works across desktop and mobile devices
-
-### AI-Powered Features
-- 💬 **Documentation suggestions** — suggests documentation based on user input
-- 📊 **Documentation comparison** — compare documentation across multiple repositories
-- 🔍 **Detailed documentation** — generates detailed documentation for specific topics
-- 📄 **Report generation** — generates reports based on documentation
+### UI Features
+- ⚡ **Responsive design** — works across desktop and mobile devices
+- 🌈 **Modern design** — polished interface with accent colors and smooth animations
+- 📱 **Streamlined navigation** — easy-to-use navigation and search functionality
+- 📊 **Real-time updates** — documentation and analytics update in real-time
