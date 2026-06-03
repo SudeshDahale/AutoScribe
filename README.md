@@ -385,7 +385,7 @@ pip install -r requirements.txt --force-reinstall
 **Groq API rate limits:**
 - Free tier: 30 requests/minute
 - Upgrade to paid tier for higher limits
-- Use incremental updates to minimize API calls
+- Use incremental updates to minimize API call
 
 ## License
 
